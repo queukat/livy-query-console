@@ -1,0 +1,98 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### IntelliJ IDEA ###
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+# --- JetBrains IDEs (IntelliJ / PyCharm / etc.) ---
+.idea/
+/out/
+# IntelliJ local history / caches
+.idea_modules/
+# Sometimes created by older IDEs
+.atlassian-ide-plugin.xml
+
+# --- Gradle ---
+.gradle/
+**/.gradle/
+**/build/
+# Gradle local config
+local.properties
+
+# --- IntelliJ Platform Gradle Plugin / runIde sandboxes ---
+# Common sandbox paths (depending on plugin/gradle versions)
+idea-sandbox/
+pluginSandbox/
+run/
+runIde/
+build/idea-sandbox/
+build/pluginSandbox/
+build/runIde/
+build/tmp/
+build/distributions/
+build/reports/
+build/pluginVerifier/
+build/verifyPlugin/
+build/patchPluginXml/
+
+# --- Kotlin / JVM ---
+.kotlin/
+**/.kotlin/
+*.class
+*.jar
+*.war
+*.ear
+
+# --- Logs ---
+*.log
+
+# --- OS ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Secrets / signing / certificates (do NOT commit) ---
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+signing.properties
+secrets.properties

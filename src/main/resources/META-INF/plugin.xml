@@ -1,0 +1,129 @@
+<idea-plugin>
+    <id>com.queukat.livy-new</id>
+    <name>Livy Query Console</name>
+    <vendor email="queukat@gmail.com" url="https://github.com/queukat">queukat</vendor>
+
+    <description><![CDATA[
+  <p>
+    <b>Livy Query Console</b> lets you run <b>Spark</b>, <b>PySpark</b>, and <b>Spark SQL</b> code on a remote cluster via
+    <b>Apache Livy</b> directly from your JetBrains IDE.
+  </p>
+
+  <p>
+    It is designed for quick exploration, debugging, and day-to-day data engineering workflows:
+    write a snippet, run it in a Livy interactive session, inspect the output, and iterate — without leaving the IDE.
+  </p>
+
+  <h3>Key features</h3>
+  <ul>
+    <li>
+      <b>Livy Console editor</b>: open a dedicated “Livy Query Console” tab (virtual file) to write and execute code.
+      If you select a fragment, only the selection is executed; otherwise the whole editor content is sent to Livy.
+    </li>
+    <li>
+      <b>Result viewer</b>: each run is added as a new tab with:
+      <ul>
+        <li><b>Raw</b> response (full JSON output from Livy)</li>
+        <li><b>Pretty</b> view (human-readable summary including errors and stack traces)</li>
+        <li><b>Table</b> view for Spark ASCII tables (e.g. output of <code>df.show()</code>)</li>
+      </ul>
+    </li>
+    <li>
+      <b>Session logs</b>: view Livy session logs in a separate dialog to diagnose cluster/session issues.
+    </li>
+    <li>
+      <b>Statements browser</b>: list recent statements in a session and inspect their state and output status.
+    </li>
+    <li>
+      <b>Tool Window</b>: a “Livy Sessions” tool window that shows active sessions and provides quick actions
+      (refresh, logs, statements).
+    </li>
+    <li>
+      <b>Configurable connection</b>: set Livy URL, session kind (spark / pyspark / sql), resource parameters,
+      and session management strategy.
+    </li>
+    <li>
+      <b>Completion</b> (optional): query Livy completions endpoint when supported by your Livy deployment.
+    </li>
+  </ul>
+
+  <h3>Typical usage</h3>
+  <ol>
+    <li>Open <b>Livy: Open Query Console</b> (Tools → Livy).</li>
+    <li>Write Spark / PySpark / SQL code and press <b>Run</b>.</li>
+    <li>Inspect results, logs, and statements, then iterate.</li>
+  </ol>
+
+  <p>
+    <b>Note:</b> This plugin requires access to a running Apache Livy server.
+    Authentication/SSL behavior depends on your environment (for corporate/self-signed certificates you may need to add
+    the CA certificate to the JetBrains Runtime trust store).
+  </p>
+]]></description>
+
+
+    <change-notes><![CDATA[
+    <ul>
+      <li>Initial public release</li>
+    </ul>
+  ]]></change-notes>
+
+    <!-- Подкрути since-build под свою целевую версию IDE -->
+    <idea-version since-build="231"/>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Settings -->
+        <applicationConfigurable
+                id="com.queukat.livy_new.settings"
+                displayName="Livy"
+                parentId="tools"
+                instance="com.queukat.livy_new.LivyPluginConfigurable"/>
+
+        <!-- Tool Window -->
+        <toolWindow
+                id="Livy Sessions"
+                anchor="bottom"
+                icon="/icons/livyToolWindow.svg"
+                factoryClass="com.queukat.livy_new.LivySessionsWindowFactory"/>
+
+        <!-- File type for LightVirtualFile + editor provider -->
+        <fileType
+                name="Livy Console"
+                language="LivyConsoleLang"
+                extensions="livyconsole"
+                implementationClass="com.queukat.livy_new.editor.LivyConsoleFileType"/>
+
+        <fileEditorProvider implementation="com.queukat.livy_new.editor.LivyConsoleFileEditorProvider"/>
+    </extensions>
+
+    <actions>
+      <!-- Меню Tools -->
+      <group id="LivyPlugin.ToolsGroup"
+             text="Livy"
+             description="Livy actions"
+             popup="true">
+        <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+        <action id="LivyPlugin.OpenConsole"
+                class="com.queukat.livy_new.RunCodeViaLivyAction"
+                text="Livy: Open Query Console"
+                description="Open Livy query console"/>
+
+        <action id="LivyPlugin.ShowSessions"
+                class="com.queukat.livy_new.OpenLivySessionsToolWindowAction"
+                text="Livy: Show Sessions Tool Window"
+                description="Open Livy Sessions tool window"/>
+      </group>
+
+      <!-- Контекстное меню редактора (правый клик) -->
+      <action id="LivyPlugin.OpenConsole.EditorPopup"
+              class="com.queukat.livy_new.RunCodeViaLivyAction"
+              text="Run via Livy…"
+              description="Open Livy query console (runs selection if exists)">
+        <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      </action>
+    </actions>
+</idea-plugin>
