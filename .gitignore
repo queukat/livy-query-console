@@ -96,3 +96,4 @@ Desktop.ini
 *.key
 signing.properties
 secrets.properties
+.run/
