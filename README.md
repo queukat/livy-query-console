@@ -4,6 +4,8 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 
 > This plugin is an early public release. Feedback and PRs are welcome.
 
+[JetBrains Marketplace](https://plugins.jetbrains.com/plugin/29406-livy-query-console/) | [GitHub Releases](https://github.com/queukat/livy-query-console/releases)
+
 ---
 
 ## Features
@@ -41,7 +43,8 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 
 ### From Marketplace
 1. Open **Settings / Preferences → Plugins**
-2. Search for **Livy Query Console**
+2. Search for **Livy Query Console**  
+   or open directly: https://plugins.jetbrains.com/plugin/29406-livy-query-console/
 3. Install and restart the IDE
 
 ### From ZIP (local build)
@@ -122,6 +125,21 @@ The resulting ZIP is usually in:
 - `verifyPlugin`
 - `buildPlugin`
 - `runIde`
+
+---
+
+## CI / CD
+
+- **CI**: `.github/workflows/ci.yml`
+  - Runs on push/PR
+  - Validates wrapper, runs tests, builds plugin ZIP artifact
+- **GitHub Release**: `.github/workflows/release.yml`
+  - Runs on tag push `v*`
+  - Builds plugin and attaches ZIP to GitHub Release automatically
+- **Marketplace publish (manual)**: `.github/workflows/publish-marketplace.yml`
+  - Run manually from GitHub Actions UI
+  - Requires repository secret: `PUBLISH_TOKEN`
+  - Optional signing secrets (if used): `CERTIFICATE_CHAIN`, `PRIVATE_KEY`, `PRIVATE_KEY_PASSWORD`
 
 ---
 
