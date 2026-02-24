@@ -4,7 +4,9 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 
 > This plugin is an early public release. Feedback and PRs are welcome.
 
-[JetBrains Marketplace](https://plugins.jetbrains.com/plugin/29406-livy-query-console/) | [GitHub Releases](https://github.com/queukat/livy-query-console/releases)
+[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
+[![Rating](https://img.shields.io/jetbrains/plugin/r/stars/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 
 ---
 
