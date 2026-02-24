@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
@@ -19,15 +20,39 @@ class LivyClient(
     private val log = Logger.getInstance(LivyClient::class.java)
     private val baseUrl: String = baseUrl.trimEnd('/')
 
-    fun testConnection(): Boolean {
+    fun testConnection(): Boolean = testConnectionDetailed().success
+
+    fun testConnectionDetailed(): ConnectionTestDiagnostics {
+        val requestUrl = "$baseUrl/sessions"
+        val startedAtMs = System.currentTimeMillis()
+        val request = Request.Builder()
+            .url(requestUrl)
+            .get()
+            .build()
+
         return try {
-            val request = Request.Builder()
-                .url("$baseUrl/sessions")
-                .get()
-                .build()
-            client.newCall(request).execute().use { it.isSuccessful }
-        } catch (_: IOException) {
-            false
+            client.newCall(request).execute().use { response ->
+                val responseBody = runCatching { readBodyOrEmpty(response) }
+                    .getOrElse { "<failed to read response body: ${it.javaClass.name}: ${it.message}>" }
+                ConnectionTestDiagnostics(
+                    requestUrl = requestUrl,
+                    success = response.isSuccessful,
+                    elapsedMs = System.currentTimeMillis() - startedAtMs,
+                    httpCode = response.code,
+                    httpMessage = response.message,
+                    responseHeaders = response.headers.toMultimap(),
+                    responseBodyPreview = truncateForDiagnostics(responseBody, 12_000)
+                )
+            }
+        } catch (t: Throwable) {
+            ConnectionTestDiagnostics(
+                requestUrl = requestUrl,
+                success = false,
+                elapsedMs = System.currentTimeMillis() - startedAtMs,
+                exceptionClass = t.javaClass.name,
+                exceptionMessage = t.message,
+                causeChain = buildCauseChain(t)
+            )
         }
     }
 
@@ -43,7 +68,7 @@ class LivyClient(
             .build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) {
                 throw IOException("createSession failed: ${response.code} ${response.message}. body=$bodyStr")
             }
@@ -56,7 +81,7 @@ class LivyClient(
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("getSession failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, Session::class.java)
         }
@@ -67,7 +92,7 @@ class LivyClient(
         val request = Request.Builder().url(url).delete().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("deleteSession failed: ${response.code} ${response.message}. body=$bodyStr")
         }
     }
@@ -82,7 +107,7 @@ class LivyClient(
             .build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("runStatement failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, Statement::class.java)
         }
@@ -93,7 +118,7 @@ class LivyClient(
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("getSessionState failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, SessionState::class.java).state
         }
@@ -104,9 +129,9 @@ class LivyClient(
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("getSessionLogs failed: ${response.code} ${response.message}. body=$bodyStr")
-            return gson.fromJson(bodyStr, SessionLogs::class.java).log ?: emptyList()
+            return gson.fromJson(bodyStr, SessionLogs::class.java).log
         }
     }
 
@@ -115,9 +140,9 @@ class LivyClient(
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("getSessions failed: ${response.code} ${response.message}. body=$bodyStr")
-            return gson.fromJson(bodyStr, SessionsResponse::class.java).sessions ?: emptyList()
+            return gson.fromJson(bodyStr, SessionsResponse::class.java).sessions
         }
     }
 
@@ -126,7 +151,7 @@ class LivyClient(
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("getStatement failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, Statement::class.java)
         }
@@ -142,7 +167,7 @@ class LivyClient(
             .build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("cancelStatement failed: ${response.code} ${response.message}. body=$bodyStr")
         }
     }
@@ -164,7 +189,7 @@ class LivyClient(
             .build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("completion failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, CompletionResponse::class.java).candidates ?: emptyList()
         }
@@ -176,12 +201,93 @@ class LivyClient(
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string()
+            val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("listStatements failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, StatementsResponse::class.java).statements ?: emptyList()
         }
+    }
+
+    private fun readBodyOrEmpty(response: Response): String = response.body?.string().orEmpty()
+
+    private fun truncateForDiagnostics(value: String, maxChars: Int): String {
+        if (value.length <= maxChars) return value
+        return value.take(maxChars) + "\n... [truncated, total ${value.length} chars]"
+    }
+
+    private fun buildCauseChain(t: Throwable): List<String> {
+        val result = mutableListOf<String>()
+        var current = t.cause
+        while (current != null && result.size < 10) {
+            val message = current.message?.trim().orEmpty()
+            result.add("${current.javaClass.name}: $message")
+            current = current.cause
+        }
+        return result
     }
 }
 
 data class CompletionResponse(val candidates: List<String>? = null)
 data class StatementsResponse(val statements: List<Statement>? = null)
+
+data class ConnectionTestDiagnostics(
+    val requestUrl: String,
+    val success: Boolean,
+    val elapsedMs: Long,
+    val httpCode: Int? = null,
+    val httpMessage: String? = null,
+    val responseHeaders: Map<String, List<String>> = emptyMap(),
+    val responseBodyPreview: String? = null,
+    val exceptionClass: String? = null,
+    val exceptionMessage: String? = null,
+    val causeChain: List<String> = emptyList()
+) {
+    fun summary(): String {
+        if (success) {
+            return "Connection successful (HTTP ${httpCode ?: "?"} ${httpMessage.orEmpty().trim()}, ${elapsedMs} ms)"
+        }
+        if (httpCode != null) {
+            return "Connection failed (HTTP $httpCode ${httpMessage.orEmpty().trim()}, ${elapsedMs} ms)"
+        }
+        if (!exceptionClass.isNullOrBlank()) {
+            return "Connection failed: $exceptionClass: ${exceptionMessage.orEmpty()} (${elapsedMs} ms)"
+        }
+        return "Connection failed (${elapsedMs} ms)"
+    }
+
+    fun toDiagnosticsText(): String = buildString {
+        appendLine("Livy Connection Diagnostics")
+        appendLine("Request URL: $requestUrl")
+        appendLine("Elapsed: ${elapsedMs} ms")
+        appendLine("Result: ${if (success) "SUCCESS" else "FAILURE"}")
+
+        if (httpCode != null) {
+            appendLine("HTTP: $httpCode ${httpMessage.orEmpty().trim()}")
+        }
+
+        if (responseHeaders.isNotEmpty()) {
+            appendLine()
+            appendLine("Response Headers:")
+            responseHeaders.toSortedMap().forEach { (key, values) ->
+                appendLine("$key: ${values.joinToString(", ")}")
+            }
+        }
+
+        if (!responseBodyPreview.isNullOrBlank()) {
+            appendLine()
+            appendLine("Response Body (preview):")
+            appendLine(responseBodyPreview)
+        }
+
+        if (!exceptionClass.isNullOrBlank()) {
+            appendLine()
+            appendLine("Exception: $exceptionClass")
+            if (!exceptionMessage.isNullOrBlank()) appendLine("Message: $exceptionMessage")
+        }
+
+        if (causeChain.isNotEmpty()) {
+            appendLine()
+            appendLine("Cause Chain:")
+            causeChain.forEach { appendLine("- $it") }
+        }
+    }
+}

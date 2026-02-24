@@ -1,12 +1,15 @@
 plugins {
     id("java")
-    kotlin("jvm") version "1.9.21"
-    kotlin("plugin.serialization") version "1.9.21"
-    id("org.jetbrains.intellij") version "1.16.1"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.intellij)
+
+    alias(libs.plugins.version.catalog.update)
 }
 
+
 group = "com.queukat"
-version = "1.0-SNAPSHOT"
+version = "1.3"
 
 repositories {
     mavenCentral()
@@ -14,17 +17,15 @@ repositories {
 
 // Configure Gradle IntelliJ Plugin
 intellij {
-    version.set("2023.1.5")
-    type.set("IC") // Target IDE Platform
-
-    plugins.set(listOf(/* Plugin Dependencies */))
+    version.set(libs.versions.intellijPlatform.get())
+    type.set("IC")
+    plugins.set(listOf())
 }
 
 dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.10.0")
-    implementation("org.json:json:20231013")
-    implementation("com.squareup.okio:okio-jvm:3.4.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    implementation(libs.okhttp)
+    implementation(libs.json)
+    implementation(libs.kotlinx.serialization.json)
 }
 
 tasks {
@@ -32,13 +33,17 @@ tasks {
         sourceCompatibility = JavaVersion.VERSION_17.toString()
         targetCompatibility = JavaVersion.VERSION_17.toString()
     }
+
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "17"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
+
 
     patchPluginXml {
         sinceBuild.set("231")
-        untilBuild.set("243.*")
+        untilBuild.set("")
     }
 
     signPlugin {

@@ -1,7 +1,6 @@
 package com.queukat.livy_new
 
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import java.util.concurrent.atomic.AtomicReference
@@ -19,7 +18,7 @@ object LivyBackground {
     ) {
         val resultRef = AtomicReference<Any?>()
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, title, cancellable) {
+        object : Task.Backgroundable(project, title, cancellable) {
 
             override fun run(indicator: ProgressIndicator) {
                 resultRef.set(action(indicator))
@@ -37,6 +36,6 @@ object LivyBackground {
             override fun onFinished() {
                 onFinishedUi()
             }
-        })
+        }.queue()
     }
 }

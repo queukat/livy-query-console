@@ -2,6 +2,7 @@ package com.queukat.livy_new
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.Messages
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.table.JBTable
@@ -53,7 +54,7 @@ class ShowStatementsDialog(
                 tableModel.rowCount = 0
                 for (stmt in stmts) {
                     tableModel.addRow(
-                        arrayOf(
+                        arrayOf<Any>(
                             stmt.id ?: -1,
                             shorten(stmt.code.orEmpty()),
                             stmt.state.orEmpty(),
@@ -61,6 +62,13 @@ class ShowStatementsDialog(
                         )
                     )
                 }
+            },
+            onErrorUi = { e ->
+                Messages.showErrorDialog(
+                    project,
+                    "Failed to load statements: ${e.message}",
+                    "Livy Error"
+                )
             }
         )
     }

@@ -63,12 +63,16 @@
 
 
     <change-notes><![CDATA[
-    <ul>
-      <li>Initial public release</li>
-    </ul>
-  ]]></change-notes>
+  <ul>
+    <li>Added GitHub Actions CI workflow: build, test, and publish plugin ZIP as an artifact.</li>
+    <li>Improved connection diagnostics with a new <b>Test Connection (Verbose)</b> action that shows URL, HTTP status, headers, body preview, and exception chain.</li>
+    <li>Fixed runtime compatibility issue by pinning networking stack to <b>OkHttp 4.12.0</b> and removing explicit Okio dependency override.</li>
+    <li>Replaced deprecated IntelliJ API usage (<code>ActionToolbar.updateActionsImmediately()</code>).</li>
+    <li>Updated tool window stripe icon sizing and improved several UI/UX edge cases in sessions/statements dialogs.</li>
+  </ul>
+]]></change-notes>
 
-    <!-- Подкрути since-build под свою целевую версию IDE -->
+
     <idea-version since-build="231"/>
 
     <depends>com.intellij.modules.platform</depends>
@@ -86,7 +90,7 @@
         <toolWindow
                 id="Livy Sessions"
                 anchor="bottom"
-                icon="/icons/livyToolWindow.svg"
+                icon="/icons/livyToolWindowStripe.svg"
                 factoryClass="com.queukat.livy_new.LivySessionsWindowFactory"/>
 
         <!-- File type for LightVirtualFile + editor provider -->

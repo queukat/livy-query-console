@@ -128,7 +128,12 @@ class LivySessionsPanel(private val project: Project) : JPanel(BorderLayout()) {
             Messages.showInfoMessage(project, "Please select a session in the table first.", "No Session Selected")
             return
         }
-        session.id?.let { ShowStatementsDialog(LivyClientProvider.getInstance().fromSettings(), it, project).show() }
+        val sessionId = session.id
+        if (sessionId == null) {
+            Messages.showInfoMessage(project, "Selected session has no id.", "Invalid Session")
+            return
+        }
+        ShowStatementsDialog(LivyClientProvider.getInstance().fromSettings(), sessionId, project).show()
     }
 
     private fun showLogsForSelectedSession() {
@@ -137,7 +142,12 @@ class LivySessionsPanel(private val project: Project) : JPanel(BorderLayout()) {
             Messages.showInfoMessage(project, "Please select a session in the table first.", "No Session Selected")
             return
         }
-        session.id?.let { SessionLogsDialog(LivyClientProvider.getInstance().fromSettings(), it, project).show() }
+        val sessionId = session.id
+        if (sessionId == null) {
+            Messages.showInfoMessage(project, "Selected session has no id.", "Invalid Session")
+            return
+        }
+        SessionLogsDialog(LivyClientProvider.getInstance().fromSettings(), sessionId, project).show()
     }
 
     private fun createModelForColumns(columnIds: List<String>): DefaultTableModel {

@@ -6,6 +6,7 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.ui.dsl.builder.*
 import javax.swing.JComponent
 
@@ -115,10 +116,45 @@ class LivyPluginConfigurable : Configurable {
                     LivyBackground.run(
                         project = null,
                         title = "Testing Livy connection",
-                        action = { _ -> LivyClientProvider.getInstance().get(url).testConnection() },
-                        onSuccessUi = { ok ->
-                            if (ok) Messages.showInfoMessage("Connection successful!", "Livy")
-                            else Messages.showErrorDialog("Failed to connect to $url", "Livy Error")
+                        action = { _ -> LivyClientProvider.getInstance().get(url).testConnectionDetailed() },
+                        onSuccessUi = { diagnostics ->
+                            if (diagnostics.success) {
+                                Messages.showInfoMessage(diagnostics.summary(), "Livy")
+                            } else {
+                                Messages.showErrorDialog(
+                                    mainPanel,
+                                    diagnostics.summary() + "\nTip: use \"Test Connection (Verbose)\" for raw diagnostics.",
+                                    "Livy Error"
+                                )
+                            }
+                        },
+                        onErrorUi = { ex ->
+                            val text = if (ex is ProcessCanceledException) {
+                                "Connection test was canceled."
+                            } else {
+                                "Connection test failed: ${ex.message}"
+                            }
+                            Messages.showErrorDialog(mainPanel, text, "Livy Error")
+                        }
+                    )
+                }
+
+                button("Test Connection (Verbose)") {
+                    val url = livyServerUrlProp.get().trimEnd('/')
+                    LivyBackground.run(
+                        project = null,
+                        title = "Testing Livy connection (verbose)",
+                        action = { _ -> LivyClientProvider.getInstance().get(url).testConnectionDetailed() },
+                        onSuccessUi = { diagnostics ->
+                            ResultDialog(diagnostics.toDiagnosticsText()).show()
+                        },
+                        onErrorUi = { ex ->
+                            val text = if (ex is ProcessCanceledException) {
+                                "Connection test was canceled."
+                            } else {
+                                "Connection test failed: ${ex.message}"
+                            }
+                            Messages.showErrorDialog(mainPanel, text, "Livy Error")
                         }
                     )
                 }
@@ -185,7 +221,7 @@ class LivyPluginConfigurable : Configurable {
                         heartbeatTimeoutProp.get() != settings.heartbeatTimeoutInSecond ||
                         ttlProp.get() != settings.ttl ||
                         maxSessionsProp.get() != settings.maxSessions ||
-                        (sessionManagementProp.get() ?: "reuse") != settings.sessionManagementStrategy ||
+                        sessionManagementProp.get() != settings.sessionManagementStrategy ||
                         killOldestProp.get() != settings.killOldestIfFull
                 )
     }
@@ -217,7 +253,7 @@ class LivyPluginConfigurable : Configurable {
         settings.heartbeatTimeoutInSecond = heartbeatTimeoutProp.get()
         settings.ttl = ttlProp.get()
         settings.maxSessions = maxSessionsProp.get()
-        settings.sessionManagementStrategy = sessionManagementProp.get() ?: "reuse"
+        settings.sessionManagementStrategy = sessionManagementProp.get()
         settings.killOldestIfFull = killOldestProp.get()
     }
 

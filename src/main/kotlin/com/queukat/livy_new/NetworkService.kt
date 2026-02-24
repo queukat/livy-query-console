@@ -21,7 +21,7 @@ object NetworkService {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Unexpected code $response")
-            return response.body?.string() ?: ""
+            return response.body?.string().orEmpty()
         }
     }
 
@@ -35,7 +35,7 @@ object NetworkService {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Unexpected code $response")
-            return response.body?.string() ?: ""
+            return response.body?.string().orEmpty()
         }
     }
 }

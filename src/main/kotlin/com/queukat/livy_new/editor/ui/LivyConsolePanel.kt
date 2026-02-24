@@ -3,6 +3,7 @@ package com.queukat.livy_new.editor.ui
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.intellij.icons.AllIcons
+import com.intellij.ide.ActivityTracker
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileTypes.FileTypes
@@ -348,7 +349,11 @@ class LivyConsolePanel(
         }
         model.setColumnIdentifiers(headerCells.toTypedArray())
         for (row in dataRows) {
-            val rowCells = row + List(headerCells.size - row.size) { "" }
+            val rowCells = if (row.size >= headerCells.size) {
+                row.take(headerCells.size)
+            } else {
+                row + List(headerCells.size - row.size) { "" }
+            }
             model.addRow(rowCells.toTypedArray())
         }
 
@@ -366,6 +371,6 @@ class LivyConsolePanel(
     private fun setRunning(running: Boolean) {
         isRunning = running
         progressBar.isVisible = running
-        toolbar.updateActionsImmediately()
+        ActivityTracker.getInstance().inc()
     }
 }
