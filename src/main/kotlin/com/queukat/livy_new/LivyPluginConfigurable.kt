@@ -102,12 +102,15 @@ class LivyPluginConfigurable : Configurable {
             }
 
             group("Session Strategy") {
+                row {
+                    label("Only plugin-managed sessions with matching server and configuration are reused or auto-deleted.")
+                }
                 row("Strategy:") {
                     comboBox(listOf("reuse", "always_create"))
                         .bindItem(sessionManagementProp)
-                        .comment("Reuse idle sessions or always create (up to limit).")
+                        .comment("Reuse compatible managed sessions or always create (up to managed-session limit).")
                 }
-                row { checkBox("Kill oldest idle if limit reached").bindSelected(killOldestProp) }
+                row { checkBox("Kill oldest idle managed session if limit reached").bindSelected(killOldestProp) }
             }
 
             row {
@@ -160,34 +163,30 @@ class LivyPluginConfigurable : Configurable {
                 }
 
                 button("Start Test Session") {
-                    val url = livyServerUrlProp.get().trimEnd('/')
+                    val url = LivyManagedSessions.normalizeServerUrl(livyServerUrlProp.get())
 
                     LivyBackground.run(
                         project = null,
                         title = "Creating Livy test session",
                         action = { _ ->
-                            val sessionConfig = SessionConfig(
-                                kind = kindProp.get().ifBlank { "spark" },
-                                proxyUser = proxyUserProp.get().takeIf { it.isNotBlank() },
-                                jars = jarsProp.get().takeIf { it.isNotBlank() }?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() },
-                                pyFiles = pyFilesProp.get().takeIf { it.isNotBlank() }?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() },
-                                files = filesProp.get().takeIf { it.isNotBlank() }?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() },
-                                driverMemory = driverMemoryProp.get().takeIf { it.isNotBlank() },
-                                driverCores = driverCoresProp.get(),
-                                executorMemory = executorMemoryProp.get().takeIf { it.isNotBlank() },
-                                executorCores = executorCoresProp.get(),
-                                numExecutors = numExecutorsProp.get(),
-                                archives = archivesProp.get().takeIf { it.isNotBlank() }?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() },
-                                queue = queueProp.get().takeIf { it.isNotBlank() },
-                                name = nameProp.get().takeIf { it.isNotBlank() },
-                                conf = parseConf(confProp.get()),
-                                heartbeatTimeoutInSecond = heartbeatTimeoutProp.get(),
-                                ttl = ttlProp.get().takeIf { it.isNotBlank() }
+                            val uiState = buildCurrentStateFromUi()
+                            val spec = LivySessionSpecFactory.fromSettings(uiState, url)
+                            val session = LivyClientProvider.getInstance().get(url).createSession(spec.config)
+                            val sessionId = session.id ?: throw RuntimeException("Livy returned a session without id.")
+                            LivyManagedSessions.remember(
+                                state = LivyPluginSettings.getInstance().pluginState,
+                                sessionId = sessionId,
+                                serverUrl = url,
+                                fingerprint = spec.fingerprint
                             )
-                            LivyClientProvider.getInstance().get(url).createSession(sessionConfig)
+                            sessionId
                         },
-                        onSuccessUi = {
-                            Messages.showInfoMessage("Test session created!", "Livy")
+                        onSuccessUi = { sessionId ->
+                            Messages.showInfoMessage(
+                                "Managed test session #$sessionId created.\n" +
+                                    "It can be reused only when the server and configuration match.",
+                                "Livy"
+                            )
                         },
                         onErrorUi = { ex ->
                             Messages.showErrorDialog("Failed to create session: ${ex.message}", "Livy Error")
@@ -290,16 +289,25 @@ class LivyPluginConfigurable : Configurable {
 
     override fun getDisplayName(): String = "Livy"
 
-    private fun parseConf(confString: String): Map<String, String>? {
-        if (confString.isBlank()) return null
-        val pairs = confString
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .mapNotNull { kv ->
-                val parts = kv.split("=", limit = 2)
-                if (parts.size == 2) parts[0].trim() to parts[1].trim() else null
-            }
-        return pairs.takeIf { it.isNotEmpty() }?.toMap()
+    private fun buildCurrentStateFromUi(): LivyPluginSettings.PluginState {
+        return LivyPluginSettings.PluginState().apply {
+            livyServerUrl = livyServerUrlProp.get()
+            kind = kindProp.get()
+            proxyUser = proxyUserProp.get()
+            jars = jarsProp.get()
+            pyFiles = pyFilesProp.get()
+            files = filesProp.get()
+            driverMemory = driverMemoryProp.get()
+            driverCores = driverCoresProp.get()
+            executorMemory = executorMemoryProp.get()
+            executorCores = executorCoresProp.get()
+            numExecutors = numExecutorsProp.get()
+            archives = archivesProp.get()
+            queue = queueProp.get()
+            name = nameProp.get()
+            conf = confProp.get()
+            heartbeatTimeoutInSecond = heartbeatTimeoutProp.get()
+            ttl = ttlProp.get()
+        }
     }
 }

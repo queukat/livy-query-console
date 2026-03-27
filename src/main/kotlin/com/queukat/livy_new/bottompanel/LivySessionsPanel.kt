@@ -17,7 +17,13 @@ import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import javax.swing.table.DefaultTableModel
 
-class LivySessionsPanel(private val project: Project) : JPanel(BorderLayout()) {
+class LivySessionsPanel(
+    private val project: Project,
+    private val autoRefresh: Boolean = true,
+    private val sessionLoader: () -> List<Session> = {
+        LivyClientProvider.getInstance().fromSettings().getAllSessions()
+    }
+) : JPanel(BorderLayout()) {
 
     private val tabbedPane = JBTabbedPane()
     private val sessionsPanel = JPanel(BorderLayout())
@@ -61,7 +67,9 @@ class LivySessionsPanel(private val project: Project) : JPanel(BorderLayout()) {
         showStatementsButton.addActionListener { showStatementsForSelectedSession() }
         viewLogsButton.addActionListener { showLogsForSelectedSession() }
 
-        refreshSessions()
+        if (autoRefresh) {
+            refreshSessions()
+        }
     }
 
     fun refreshSessions() {
@@ -69,19 +77,10 @@ class LivySessionsPanel(private val project: Project) : JPanel(BorderLayout()) {
             project = project,
             title = "Refreshing Livy sessions",
             action = { _ ->
-                LivyClientProvider.getInstance().fromSettings().getSessions()
+                sessionLoader()
             },
             onSuccessUi = { sessions ->
-                rowSessions.clear()
-                rowSessions.addAll(sessions)
-
-                // очистка таблицы
-                sessionsTableModel.rowCount = 0
-
-                // добавляем строки под текущие видимые колонки
-                for (s in sessions) {
-                    sessionsTableModel.addRow(SessionColumns.valuesFor(s, visibleColumnIds))
-                }
+                replaceSessions(sessions)
             },
             onErrorUi = { e ->
                 Messages.showErrorDialog(
@@ -91,6 +90,16 @@ class LivySessionsPanel(private val project: Project) : JPanel(BorderLayout()) {
                 )
             }
         )
+    }
+
+    internal fun replaceSessions(sessions: List<Session>) {
+        rowSessions.clear()
+        rowSessions.addAll(sessions)
+
+        sessionsTableModel.rowCount = 0
+        for (s in sessions) {
+            sessionsTableModel.addRow(SessionColumns.valuesFor(s, visibleColumnIds))
+        }
     }
 
     private fun chooseColumns() {

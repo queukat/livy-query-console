@@ -23,6 +23,17 @@ class LivyPluginSettings : PersistentStateComponent<LivyPluginSettings.PluginSta
                 "id", "appId", "owner", "kind", "state", "log"
             )
         }
+        pluginState.managedSessions = pluginState.managedSessions
+            .filter { it.sessionId >= 0 && it.serverUrl.isNotBlank() && it.fingerprint.isNotBlank() }
+            .distinctBy { it.serverUrl to it.sessionId }
+            .toMutableList()
+    }
+
+    class ManagedSessionState {
+        var sessionId: Int = -1
+        var serverUrl: String = ""
+        var fingerprint: String = ""
+        var createdAtMs: Long = 0L
     }
 
     class PluginState {
@@ -56,6 +67,12 @@ class LivyPluginSettings : PersistentStateComponent<LivyPluginSettings.PluginSta
         var sessionTableColumns: MutableList<String> = mutableListOf(
             "id", "appId", "owner", "kind", "state", "log"
         )
+
+        /**
+         * Sessions created by this plugin and considered safe to reuse/manage.
+         * Reuse and auto-delete must never target arbitrary foreign sessions.
+         */
+        var managedSessions: MutableList<ManagedSessionState> = mutableListOf()
     }
 
     companion object {

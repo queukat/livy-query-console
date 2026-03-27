@@ -42,9 +42,6 @@
       <b>Configurable connection</b>: set Livy URL, session kind (spark / pyspark / sql), resource parameters,
       and session management strategy.
     </li>
-    <li>
-      <b>Completion</b> (optional): query Livy completions endpoint when supported by your Livy deployment.
-    </li>
   </ul>
 
   <h3>Typical usage</h3>
@@ -63,12 +60,28 @@
 
 
     <change-notes><![CDATA[
+  <h3>What's new in 1.4</h3>
   <ul>
-    <li>Added GitHub Actions CI workflow: build, test, and publish plugin ZIP as an artifact.</li>
-    <li>Improved connection diagnostics with a new <b>Test Connection (Verbose)</b> action that shows URL, HTTP status, headers, body preview, and exception chain.</li>
-    <li>Fixed runtime compatibility issue by pinning networking stack to <b>OkHttp 4.12.0</b> and removing explicit Okio dependency override.</li>
-    <li>Replaced deprecated IntelliJ API usage (<code>ActionToolbar.updateActionsImmediately()</code>).</li>
-    <li>Updated tool window stripe icon sizing and improved several UI/UX edge cases in sessions/statements dialogs.</li>
+    <li>
+      <b>Safer session management</b>: session reuse and automatic cleanup now apply only to plugin-managed sessions
+      created for the same Livy server and matching configuration.
+    </li>
+    <li>
+      <b>More reliable execution flow</b>: running code now uses a cancellable background task, waits with a timeout,
+      and stops cleanly when the Livy console editor is closed.
+    </li>
+    <li>
+      <b>Better session visibility</b>: the <b>Livy Sessions</b> tool window now loads all available session pages
+      instead of only the first page returned by Livy.
+    </li>
+    <li>
+      <b>Clearer UI</b>: wording and settings were updated to better explain how managed sessions work, and the editor
+      popup action now correctly says <b>Open in Livy Console…</b>.
+    </li>
+    <li>
+      <b>Stability improvements</b>: removed incomplete UI surface that could mislead users and added targeted checks
+      around the new session-management behavior.
+    </li>
   </ul>
 ]]></change-notes>
 
@@ -125,8 +138,8 @@
       <!-- Контекстное меню редактора (правый клик) -->
       <action id="LivyPlugin.OpenConsole.EditorPopup"
               class="com.queukat.livy_new.RunCodeViaLivyAction"
-              text="Run via Livy…"
-              description="Open Livy query console (runs selection if exists)">
+              text="Open in Livy Console…"
+              description="Open Livy query console with selected text, if any">
         <add-to-group group-id="EditorPopupMenu" anchor="last"/>
       </action>
     </actions>

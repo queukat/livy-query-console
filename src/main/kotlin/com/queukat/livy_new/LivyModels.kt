@@ -30,11 +30,6 @@ data class SessionsResponse(
     val sessions: List<Session> = emptyList()
 )
 
-data class SessionState(
-    val id: Int? = null,
-    val state: String? = null
-)
-
 data class SessionLogs(
     val id: Int? = null,
     val from: Int? = null,

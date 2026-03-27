@@ -20,8 +20,6 @@ class LivyClient(
     private val log = Logger.getInstance(LivyClient::class.java)
     private val baseUrl: String = baseUrl.trimEnd('/')
 
-    fun testConnection(): Boolean = testConnectionDetailed().success
-
     fun testConnectionDetailed(): ConnectionTestDiagnostics {
         val requestUrl = "$baseUrl/sessions"
         val startedAtMs = System.currentTimeMillis()
@@ -113,17 +111,6 @@ class LivyClient(
         }
     }
 
-    fun getSessionState(sessionId: Int): String? {
-        val url = "$baseUrl/sessions/$sessionId/state"
-        val request = Request.Builder().url(url).get().build()
-
-        client.newCall(request).execute().use { response ->
-            val bodyStr = readBodyOrEmpty(response)
-            if (!response.isSuccessful) throw IOException("getSessionState failed: ${response.code} ${response.message}. body=$bodyStr")
-            return gson.fromJson(bodyStr, SessionState::class.java).state
-        }
-    }
-
     fun getSessionLogs(sessionId: Int, from: Int = 0, size: Int = 100): List<String> {
         val url = "$baseUrl/sessions/$sessionId/log?from=$from&size=$size"
         val request = Request.Builder().url(url).get().build()
@@ -136,13 +123,40 @@ class LivyClient(
     }
 
     fun getSessions(from: Int = 0, size: Int = 10): List<Session> {
+        return getSessionsResponse(from, size).sessions
+    }
+
+    fun getAllSessions(pageSize: Int = 100): List<Session> {
+        val allSessions = mutableListOf<Session>()
+        var from = 0
+
+        while (true) {
+            val page = getSessionsResponse(from, pageSize)
+            val sessions = page.sessions
+            if (sessions.isEmpty()) break
+
+            allSessions.addAll(sessions)
+
+            val total = page.total
+            if (sessions.size < pageSize || (total != null && allSessions.size >= total)) {
+                break
+            }
+            from += sessions.size
+        }
+
+        return allSessions
+    }
+
+    fun getBaseUrl(): String = baseUrl
+
+    private fun getSessionsResponse(from: Int, size: Int): SessionsResponse {
         val url = "$baseUrl/sessions?from=$from&size=$size"
         val request = Request.Builder().url(url).get().build()
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("getSessions failed: ${response.code} ${response.message}. body=$bodyStr")
-            return gson.fromJson(bodyStr, SessionsResponse::class.java).sessions
+            return gson.fromJson(bodyStr, SessionsResponse::class.java)
         }
     }
 
@@ -169,29 +183,6 @@ class LivyClient(
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
             if (!response.isSuccessful) throw IOException("cancelStatement failed: ${response.code} ${response.message}. body=$bodyStr")
-        }
-    }
-
-    fun getSessionCompletions(sessionId: Int, code: String, cursor: Int, kind: String? = null): List<String> {
-        val url = "$baseUrl/sessions/$sessionId/completion"
-
-        val bodyMap = linkedMapOf<String, Any>(
-            "code" to code,
-            "cursor" to cursor
-        )
-        if (!kind.isNullOrBlank()) bodyMap["kind"] = kind
-
-        val json = gson.toJson(bodyMap)
-
-        val request = Request.Builder()
-            .url(url)
-            .post(json.toRequestBody("application/json".toMediaType()))
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val bodyStr = readBodyOrEmpty(response)
-            if (!response.isSuccessful) throw IOException("completion failed: ${response.code} ${response.message}. body=$bodyStr")
-            return gson.fromJson(bodyStr, CompletionResponse::class.java).candidates ?: emptyList()
         }
     }
 
@@ -226,7 +217,6 @@ class LivyClient(
     }
 }
 
-data class CompletionResponse(val candidates: List<String>? = null)
 data class StatementsResponse(val statements: List<Statement>? = null)
 
 data class ConnectionTestDiagnostics(

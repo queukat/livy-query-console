@@ -7,6 +7,9 @@ import com.intellij.ide.ActivityTracker
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileTypes.FileTypes
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -56,9 +59,16 @@ class LivyConsolePanel(
     private val resultsTabbedPane = JBTabbedPane()
     private var statementCounter = 0
 
+    @Volatile
     private var isRunning = false
+    @Volatile
     private var currentStatementId: Int? = null
+    @Volatile
     private var lastUsedSessionId: Int? = null
+    @Volatile
+    private var currentIndicator: ProgressIndicator? = null
+    @Volatile
+    private var disposed = false
 
     private val toolbar: ActionToolbar
 
@@ -67,8 +77,6 @@ class LivyConsolePanel(
             add(RunAction())
             add(CancelAction())
             add(ShowLogsAction())
-            addSeparator()
-            add(CompleteAction())
         }
         toolbar = ActionManager.getInstance().createActionToolbar("LivyConsoleToolbar", group, true).apply {
             targetComponent = this@LivyConsolePanel
@@ -117,14 +125,6 @@ class LivyConsolePanel(
         override fun actionPerformed(e: AnActionEvent) = showLogs()
     }
 
-    private inner class CompleteAction : DumbAwareAction("Complete", "Get completion suggestions from Livy", AllIcons.Actions.Lightning) {
-        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = !isRunning && codeField.text.isNotBlank()
-        }
-        override fun actionPerformed(e: AnActionEvent) = doCodeCompletion()
-    }
-
     private fun executeCode() {
         val ed = codeField.editor
         val selection = ed?.selectionModel?.selectedText?.takeIf { it.isNotBlank() }
@@ -136,59 +136,88 @@ class LivyConsolePanel(
         }
 
         setRunning(true)
+        currentStatementId = null
 
-        Thread {
-            try {
-                val settings = LivyPluginSettings.getInstance().pluginState
-                val client = LivyClientProvider.getInstance().fromSettings()
-                val sessionManager = SessionManager(client, settings.maxSessions)
+        var executionResult: ExecutionResult? = null
 
-                val session = sessionManager.getSession()
-                val sessionId = session.id ?: throw RuntimeException("Livy returned a session without id.")
-                lastUsedSessionId = sessionId
+        object : Task.Backgroundable(project, "Running code via Livy", true) {
+            override fun run(indicator: ProgressIndicator) {
+                currentIndicator = indicator
+                try {
+                    val settings = LivyPluginSettings.getInstance().pluginState
+                    val client = LivyClientProvider.getInstance().fromSettings()
+                    val sessionManager = SessionManager(client, settings.maxSessions)
 
-                waitForSessionIdle(client, sessionId)
+                    val session = sessionManager.getSession(indicator)
+                    val sessionId = session.id ?: throw RuntimeException("Livy returned a session without id.")
+                    lastUsedSessionId = sessionId
 
-                val statement = client.runStatement(sessionId, code)
-                val statementId = statement.id ?: throw RuntimeException("Livy returned a statement without id.")
-                currentStatementId = statementId
+                    checkCanceled(indicator)
+                    val statement = client.runStatement(sessionId, code)
+                    val statementId = statement.id ?: throw RuntimeException("Livy returned a statement without id.")
+                    currentStatementId = statementId
 
-                val finalStatement = waitForStatementAvailable(client, sessionId, statementId)
-
-                SwingUtilities.invokeLater {
-                    statementCounter++
-                    val tabTitle = "Result #$statementCounter"
-                    val outputPanel = createOutputPanel(sessionId, finalStatement)
-                    resultsTabbedPane.addTab(tabTitle, outputPanel)
-                    resultsTabbedPane.selectedIndex = resultsTabbedPane.tabCount - 1
+                    val finalStatement = waitForStatementAvailable(
+                        client = client,
+                        sessionId = sessionId,
+                        statementId = statementId,
+                        indicator = indicator,
+                        timeoutMs = STATEMENT_WAIT_TIMEOUT_MS
+                    )
+                    executionResult = ExecutionResult(sessionId, finalStatement)
+                } finally {
+                    currentIndicator = null
                 }
-            } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    Messages.showErrorDialog(project, "Failed to execute code: ${e.message}", "Livy Error")
-                }
-            } finally {
-                SwingUtilities.invokeLater { setRunning(false) }
             }
-        }.start()
+
+            override fun onSuccess() {
+                val result = executionResult ?: return
+                if (disposed) return
+                statementCounter++
+                addResultTab(result.sessionId, result.statement, "Result #$statementCounter")
+            }
+
+            override fun onThrowable(error: Throwable) {
+                if (error is ProcessCanceledException || disposed) return
+                Messages.showErrorDialog(project, "Failed to execute code: ${error.message}", "Livy Error")
+            }
+
+            override fun onFinished() {
+                currentIndicator = null
+                currentStatementId = null
+                if (!disposed) {
+                    setRunning(false)
+                } else {
+                    isRunning = false
+                    progressBar.isVisible = false
+                }
+            }
+        }.queue()
     }
 
     private fun cancelStatement() {
         val statementId = currentStatementId
         val sessionId = lastUsedSessionId
+        currentIndicator?.cancel()
         if (statementId == null || sessionId == null) return
 
-        Thread {
-            try {
+        LivyBackground.run(
+            project = project,
+            title = "Cancelling Livy statement",
+            action = { _ ->
                 LivyClientProvider.getInstance().fromSettings().cancelStatement(sessionId, statementId)
-                SwingUtilities.invokeLater {
+            },
+            onSuccessUi = {
+                if (!disposed) {
                     Messages.showInfoMessage(project, "Cancel requested for statement #$statementId.", "Livy")
                 }
-            } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    Messages.showErrorDialog(project, "Failed to cancel: ${e.message}", "Livy Error")
+            },
+            onErrorUi = { error ->
+                if (error !is ProcessCanceledException && !disposed) {
+                    Messages.showErrorDialog(project, "Failed to cancel: ${error.message}", "Livy Error")
                 }
             }
-        }.start()
+        )
     }
 
     private fun showLogs() {
@@ -197,10 +226,6 @@ class LivyConsolePanel(
             return
         }
         SessionLogsDialog(LivyClientProvider.getInstance().fromSettings(), sessionId, project).show()
-    }
-
-    private fun doCodeCompletion() {
-        Messages.showInfoMessage(project, "Completion is not wired here yet (later we’ll move to ProgressManager).", "Livy")
     }
 
     private fun createOutputPanel(sessionId: Int, statement: Statement): JPanel {
@@ -274,6 +299,15 @@ class LivyConsolePanel(
         return JPanel(BorderLayout()).apply { add(tabs, BorderLayout.CENTER) }
     }
 
+    internal fun addPreviewResult(
+        sessionId: Int,
+        statement: Statement,
+        title: String = "Preview"
+    ) {
+        if (disposed) return
+        addResultTab(sessionId, statement, title)
+    }
+
     private fun buildPrettyText(out: StatementOutput?): String {
         if (out == null) return "No output."
 
@@ -299,27 +333,24 @@ class LivyConsolePanel(
         }
     }
 
-    private fun waitForSessionIdle(client: LivyClient, sessionId: Int) {
-        while (true) {
-            val s = client.getSession(sessionId)
-            val state = s.state ?: throw RuntimeException("Session #$sessionId has null state.")
-            if (state in listOf("idle", "error", "dead", "killed")) {
-                if (state != "idle") throw RuntimeException("Session #$sessionId ended up in state: $state")
-                return
-            }
-            Thread.sleep(1000)
-        }
-    }
-
-    private fun waitForStatementAvailable(client: LivyClient, sessionId: Int, statementId: Int): Statement {
-        while (true) {
+    private fun waitForStatementAvailable(
+        client: LivyClient,
+        sessionId: Int,
+        statementId: Int,
+        indicator: ProgressIndicator,
+        timeoutMs: Long
+    ): Statement {
+        val deadlineMs = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadlineMs) {
+            checkCanceled(indicator)
             val st = client.getStatement(sessionId, statementId)
             val state = st.state ?: throw RuntimeException("Statement #$statementId has null state.")
             if (state in listOf("available", "error", "cancelled")) {
                 return st
             }
-            Thread.sleep(1000)
+            Thread.sleep(POLL_INTERVAL_MS)
         }
+        throw RuntimeException("Timed out waiting for statement #$statementId to finish.")
     }
 
     private fun parseAsciiTableOrNull(asciiTable: String): JTable? {
@@ -372,5 +403,36 @@ class LivyConsolePanel(
         isRunning = running
         progressBar.isVisible = running
         ActivityTracker.getInstance().inc()
+    }
+
+    private fun addResultTab(sessionId: Int, statement: Statement, title: String) {
+        val outputPanel = createOutputPanel(sessionId, statement)
+        resultsTabbedPane.addTab(title, outputPanel)
+        resultsTabbedPane.selectedIndex = resultsTabbedPane.tabCount - 1
+    }
+
+    fun disposePanel() {
+        disposed = true
+        currentIndicator?.cancel()
+        currentIndicator = null
+        currentStatementId = null
+        isRunning = false
+        progressBar.isVisible = false
+    }
+
+    private fun checkCanceled(indicator: ProgressIndicator) {
+        if (disposed || indicator.isCanceled) {
+            throw ProcessCanceledException()
+        }
+    }
+
+    private data class ExecutionResult(
+        val sessionId: Int,
+        val statement: Statement
+    )
+
+    companion object {
+        private const val POLL_INTERVAL_MS = 1_000L
+        private const val STATEMENT_WAIT_TIMEOUT_MS = 10 * 60 * 1000L
     }
 }

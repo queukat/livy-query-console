@@ -40,7 +40,9 @@ class LivyConsoleFileEditor(
     override fun addPropertyChangeListener(listener: PropertyChangeListener) {}
     override fun removePropertyChangeListener(listener: PropertyChangeListener) {}
     override fun getCurrentLocation(): FileEditorLocation? = null
-    override fun dispose() {}
+    override fun dispose() {
+        consolePanel.disposePanel()
+    }
 }
 
 class SimpleEditorState : FileEditorState {

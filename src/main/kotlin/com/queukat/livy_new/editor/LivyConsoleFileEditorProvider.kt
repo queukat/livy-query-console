@@ -9,8 +9,7 @@ import com.intellij.openapi.vfs.VirtualFile
 class LivyConsoleFileEditorProvider : FileEditorProvider {
 
     override fun accept(project: Project, file: VirtualFile): Boolean {
-        // не сравниваем по instance — сравниваем по имени fileType
-        return file.fileType.name == LivyConsoleFileType.DISPLAY_NAME
+        return file.extension == LivyConsoleFileType.EXTENSION
     }
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor {

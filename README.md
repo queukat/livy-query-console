@@ -25,8 +25,7 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
   - Open **Statements** and **Logs** dialogs for the selected session
 - **Session logs dialog** with quick search (find next/prev)
 - **Statements browser** for a session
-- **Configurable connection & session options** (Livy URL, kind, resources, TTL, conf, etc.)
-- **Completion** (optional): uses Livy completion endpoint when supported by your Livy deployment
+- **Configurable connection & managed-session options** (Livy URL, kind, resources, TTL, conf, etc.)
 
 ---
 
@@ -63,6 +62,7 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
    - Livy Server URL (e.g. `http://localhost:8998`)
    - Session kind: `spark` / `pyspark` / `sql`
    - Optional resources (driver/executor memory, cores, etc.)
+   - Reuse applies only to plugin-managed sessions created for the same server and matching configuration
 3. Write a snippet and click **Run**
 
 ### Example: Scala / Spark
@@ -126,7 +126,16 @@ The resulting ZIP is usually in:
 ### Useful Gradle tasks
 - `verifyPlugin`
 - `buildPlugin`
+- `generateScreenshots`
 - `runIde`
+
+### Generate plugin screenshots
+```bash
+./gradlew generateScreenshots
+```
+
+Generated PNG files are written to:
+`docs/screenshots/`
 
 ---
 
@@ -151,7 +160,7 @@ The resulting ZIP is usually in:
 - `LivyConsoleFileEditor*` — custom editor + UI
 - `LivySessionsWindowFactory` + `LivySessionsPanel` — tool window
 - `LivyClient` — Livy REST API client (OkHttp)
-- `SessionManager` — reuse/create sessions according to settings
+- `SessionManager` — safely reuse/create plugin-managed sessions according to settings
 - `LivyPluginSettings` / `LivyPluginConfigurable` — persistent settings + UI
 
 ---
