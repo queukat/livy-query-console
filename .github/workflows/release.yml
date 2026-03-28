@@ -35,10 +35,11 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build plugin
-        run: ./gradlew --no-daemon buildPlugin --stacktrace
+        run: ./gradlew --no-daemon test buildPlugin verifyPlugin --stacktrace
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ github.ref_name }}
           files: build/distributions/*.zip
           generate_release_notes: true

@@ -20,6 +20,7 @@
 | A9 | Missing or weak verification/tests | High | No real tests/smoke confidence | fixed | Added targeted tests and completed `test`, `buildPlugin`, and `verifyPlugin` |
 | A10 | API/platform smell around runtime `LightVirtualFile` and plain-text editor surface | Medium | Runtime/editor integration is weak | partially fixed | Editor provider matching no longer relies on `fileType.name`; remaining `LightVirtualFile` usage is low-risk and documented |
 | A11 | Separate audit markdown file | Low | Needed as input artifact | stale / not reproducible | File was absent; replaced by this living plan document |
+| A12 | CI/release pipeline does not enforce plugin verification before publishing | High | Release can be created without the strongest available quality gate | fixed | CI and release workflows now run `verifyPlugin` before publishing artifacts |
 
 ## Execution plan
 ### Phase 1 — Critical
@@ -35,6 +36,7 @@
 - [x] Fix misleading popup/menu wording to reflect actual behavior
 - [x] Make settings/session messaging honest about managed-session semantics
 - [x] Add at least targeted tests or smoke-verifiable logic for new session policy
+- [x] Make CI and release workflows enforce `verifyPlugin`
 
 ### Phase 3 — Medium / Low
 - [x] Remove unused dead code that is no longer part of the product surface
@@ -96,6 +98,14 @@
 - Files: `build.gradle.kts`, `README.md`, `src/test/kotlin/com/queukat/livy_new/LivyUiScreenshotTest.kt`, `src/test/kotlin/com/queukat/livy_new/testsupport/InMemoryPreferencesFactory.kt`, `src/main/kotlin/com/queukat/livy_new/editor/ui/LivyConsolePanel.kt`, `src/main/kotlin/com/queukat/livy_new/bottompanel/LivySessionsPanel.kt`, `src/main/resources/META-INF/plugin.xml`, `docs/screenshots/README.md`, generated `docs/screenshots/*.png`
 - Verification: `./gradlew.bat --gradle-user-home .gradle-user-home --no-daemon test generateScreenshots buildPlugin verifyPlugin --stacktrace` completed successfully and produced `settings.png`, `console.png`, and `sessions.png`.
 - Notes: Screenshot generation is deterministic and does not require manual clicking; it uses real Swing/IntelliJ UI components rendered from tests.
+
+### Step 7
+- Status: done
+- Problem: GitHub CI/release automation existed, but it did not enforce `verifyPlugin`, so a release asset could be published without the strongest available platform compatibility gate.
+- Fix: Updated the CI workflow to run `test buildPlugin verifyPlugin`, and updated the release workflow to run the same checks before creating a GitHub Release. The release is now explicitly named after the pushed tag.
+- Files: `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+- Verification: `./gradlew.bat --gradle-user-home .gradle-user-home --no-daemon test buildPlugin verifyPlugin --stacktrace` completed successfully after the workflow updates. Remote release verification will follow after commit/tag push.
+- Notes: Next step is to commit the workflow changes, push `main`, and create/push the release tag if needed.
 
 ## Verification summary
 - [x] tests
