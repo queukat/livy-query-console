@@ -1,5 +1,6 @@
 package com.queukat.livy_new
 
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.JBColor
@@ -8,6 +9,7 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
 import java.awt.BorderLayout
 import java.awt.Dimension
+import java.awt.datatransfer.StringSelection
 import javax.swing.Action
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -22,7 +24,9 @@ import javax.swing.text.DefaultHighlighter
 class SessionLogsDialog(
     private val client: LivyClient,
     private val sessionId: Int,
-    private val project: Project
+    private val project: Project,
+    private val serverUrl: String? = null,
+    private val profileName: String? = null
 ) : DialogWrapper(project, true, IdeModalityType.MODELESS) {
 
     private val textArea = JTextArea().apply {
@@ -32,13 +36,17 @@ class SessionLogsDialog(
     }
 
     private var fullLogsText: String = ""
+    private val statsLabel = JLabel("No logs loaded yet.")
 
     private val searchField = JTextField(20)
     private val findNextButton = JButton("Find Next")
     private val findPrevButton = JButton("Find Prev")
 
     init {
-        title = "Logs for session #$sessionId"
+        title = serverUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "Logs for session #$sessionId" }
+            ?: "Logs for session #$sessionId"
         setResizable(true)
         init()
         loadLogsAsync()
@@ -64,6 +72,13 @@ class SessionLogsDialog(
         findPrevButton.addActionListener { findPrev() }
 
         return panel {
+            profileName?.takeIf { it.isNotBlank() }?.let { name ->
+                row { label("Profile: $name") }
+            }
+            serverUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                row { label("Server: $url") }
+            }
+            row { cell(statsLabel).align(Align.FILL) }
             row { cell(searchPanel).align(Align.FILL) }
             row {
                 scrollCell(scrollPane).resizableColumn().align(Align.FILL)
@@ -76,6 +91,11 @@ class SessionLogsDialog(
             object : DialogWrapperAction("Refresh") {
                 override fun doAction(e: java.awt.event.ActionEvent?) {
                     loadLogsAsync()
+                }
+            },
+            object : DialogWrapperAction("Copy All") {
+                override fun doAction(e: java.awt.event.ActionEvent?) {
+                    CopyPasteManager.getInstance().setContents(StringSelection(fullLogsText))
                 }
             },
             okAction
@@ -91,11 +111,13 @@ class SessionLogsDialog(
                 fullLogsText = logs.joinToString("\n")
                 textArea.text = fullLogsText
                 textArea.caretPosition = 0
+                 statsLabel.text = "Loaded ${logs.size} log line(s) for session #$sessionId."
                 clearHighlights()
             },
             onErrorUi = { e ->
                 textArea.text = "Failed to load logs: ${e.message}"
                 fullLogsText = textArea.text
+                statsLabel.text = "Failed to load logs for session #$sessionId."
             }
         )
     }

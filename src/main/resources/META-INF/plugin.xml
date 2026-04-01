@@ -17,8 +17,9 @@
   <h3>Key features</h3>
   <ul>
     <li>
-      <b>Livy Console editor</b>: open a dedicated “Livy Query Console” tab (virtual file) to write and execute code.
-      If you select a fragment, only the selection is executed; otherwise the whole editor content is sent to Livy.
+      <b>Livy work file</b>: open a dedicated reusable Livy work surface, route editor selection/current line/whole file
+      into it, and execute snippets without leaving the IDE workflow. The work file follows the bound execution kind
+      (`sql`, `pyspark` / `python`, or fallback plain Spark text) and reuses host-IDE highlighting where available.
     </li>
     <li>
       <b>Result viewer</b>: each run is added as a new tab with:
@@ -39,15 +40,20 @@
       (refresh, logs, statements).
     </li>
     <li>
-      <b>Configurable connection</b>: set Livy URL, session kind (spark / pyspark / sql), resource parameters,
+      <b>Connection profiles</b>: keep multiple named Livy targets with per-profile session kind, resource parameters,
       and session management strategy.
+    </li>
+    <li>
+      <b>Local history</b>: recent snippets and the last draft per profile can be restored locally for quick rerun/reuse.
+      This is plain-text local persistence, not notebook or remote session restore.
     </li>
   </ul>
 
   <h3>Typical usage</h3>
   <ol>
-    <li>Open <b>Livy: Open Query Console</b> (Tools → Livy).</li>
-    <li>Write Spark / PySpark / SQL code and press <b>Run</b>.</li>
+    <li>Open <b>Livy: Open Work File</b> (Tools → Livy) or use the <b>Livy</b> editor/project popup actions.</li>
+    <li>Choose the connection profile to bind the work file or run action to.</li>
+    <li>Route a selection/current line/whole file into Livy, or use <b>Run Current</b> / <b>Run File</b> inside the work file.</li>
     <li>Inspect results, logs, and statements, then iterate.</li>
   </ol>
 
@@ -56,31 +62,44 @@
     Authentication/SSL behavior depends on your environment (for corporate/self-signed certificates you may need to add
     the CA certificate to the JetBrains Runtime trust store).
   </p>
+
+  <p>
+    <b>Current scope:</b> the plugin supports multiple named connection profiles for direct Livy HTTP(S) connectivity.
+    Existing work files and loaded session views stay bound to the profile snapshot they were opened with.
+    Optional local history stores recent snippets and the last draft per profile in plain text on the local machine only.
+    SQL work files support a narrow semicolon-delimited current-statement heuristic; PySpark/plain Spark work files stay on selection-or-file execution semantics.
+    This is a lightweight execution workflow, not notebook persistence or semantic Spark language tooling.
+    Advanced auth flows such as auth headers/tokens, cookies, Kerberos, OAuth, and secure credential storage are not implemented yet.
+  </p>
 ]]></description>
 
 
     <change-notes><![CDATA[
-  <h3>What's new in 1.4</h3>
+  <h3>What's new in 1.5</h3>
   <ul>
     <li>
-      <b>Safer session management</b>: session reuse and automatic cleanup now apply only to plugin-managed sessions
-      created for the same Livy server and matching configuration.
+      <b>Profile-safe execution</b>: consoles, work files, and loaded session views stay bound to the captured
+      Livy profile snapshot instead of silently drifting when settings change.
     </li>
     <li>
-      <b>More reliable execution flow</b>: running code now uses a cancellable background task, waits with a timeout,
-      and stops cleanly when the Livy console editor is closed.
+      <b>Reusable Livy work file</b>: editor/project popup actions can open source in a dedicated Livy work file,
+      rerun recent snippets from local history, restore the last draft per profile/kind, and navigate back to source.
     </li>
     <li>
-      <b>Better session visibility</b>: the <b>Livy Sessions</b> tool window now loads all available session pages
-      instead of only the first page returned by Livy.
+      <b>Language-aware editor surface</b>: the work file now reflects the bound execution kind, reuses host-IDE
+      SQL/Python highlighting when available, and supports a narrow SQL current-statement run heuristic.
     </li>
     <li>
-      <b>Clearer UI</b>: wording and settings were updated to better explain how managed sessions work, and the editor
-      popup action now correctly says <b>Open in Livy Console…</b>.
+      <b>Sessions workflow improvements</b>: the Livy Sessions tool window now supports safe termination of
+      plugin-managed sessions plus panel-level auto-refresh with a configurable interval.
     </li>
     <li>
-      <b>Stability improvements</b>: removed incomplete UI surface that could mislead users and added targeted checks
-      around the new session-management behavior.
+      <b>Better reliability</b>: the work-file/editor run path was tightened to avoid wrong-target drift,
+      duplicate request application, and editor-provider lifecycle issues.
+    </li>
+    <li>
+      <b>Honest product boundary</b>: the plugin now says explicitly where support stops:
+      direct Livy connectivity with profiles and local plain-text history, not advanced auth or notebook semantics.
     </li>
   </ul>
 ]]></change-notes>
@@ -108,7 +127,7 @@
 
         <!-- File type for LightVirtualFile + editor provider -->
         <fileType
-                name="Livy Console"
+                name="Livy Work File"
                 language="LivyConsoleLang"
                 extensions="livyconsole"
                 implementationClass="com.queukat.livy_new.editor.LivyConsoleFileType"/>
@@ -126,8 +145,8 @@
 
         <action id="LivyPlugin.OpenConsole"
                 class="com.queukat.livy_new.RunCodeViaLivyAction"
-                text="Livy: Open Query Console"
-                description="Open Livy query console"/>
+                text="Livy: Open Work File"
+                description="Open a reusable Livy work file"/>
 
         <action id="LivyPlugin.ShowSessions"
                 class="com.queukat.livy_new.OpenLivySessionsToolWindowAction"
@@ -135,12 +154,27 @@
                 description="Open Livy Sessions tool window"/>
       </group>
 
-      <!-- Контекстное меню редактора (правый клик) -->
-      <action id="LivyPlugin.OpenConsole.EditorPopup"
-              class="com.queukat.livy_new.RunCodeViaLivyAction"
-              text="Open in Livy Console…"
-              description="Open Livy query console with selected text, if any">
+      <group id="LivyPlugin.ContextGroup"
+             text="Livy"
+             description="Run or open source in Livy"
+             popup="true">
         <add-to-group group-id="EditorPopupMenu" anchor="last"/>
-      </action>
+        <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+
+        <action id="LivyPlugin.OpenWorkFile.Context"
+                class="com.queukat.livy_new.RunCodeViaLivyAction"
+                text="Open in Livy Work File…"
+                description="Open the current selection or file in a Livy work file"/>
+
+        <action id="LivyPlugin.RunSelectionOrLine"
+                class="com.queukat.livy_new.RunSelectionOrLineInLivyAction"
+                text="Run Selection or Line in Livy"
+                description="Run the current editor selection or line in Livy"/>
+
+        <action id="LivyPlugin.RunFile"
+                class="com.queukat.livy_new.RunFileInLivyAction"
+                text="Run File in Livy"
+                description="Run the current editor or selected project file in Livy"/>
+      </group>
     </actions>
 </idea-plugin>

@@ -8,7 +8,7 @@ class LivySessionSpecFactoryTest {
 
     @Test
     fun fingerprint_ignores_generated_name_but_keeps_runtime_config() {
-        val settings = LivyPluginSettings.PluginState().apply {
+        val settings = LivyPluginSettings.ConnectionProfileState().apply {
             kind = "sql"
             driverMemory = "4g"
             executorMemory = "8g"
@@ -25,7 +25,7 @@ class LivySessionSpecFactoryTest {
 
     @Test
     fun blank_values_get_safe_defaults() {
-        val settings = LivyPluginSettings.PluginState().apply {
+        val settings = LivyPluginSettings.ConnectionProfileState().apply {
             kind = ""
             driverMemory = ""
             executorMemory = ""

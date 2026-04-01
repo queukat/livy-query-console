@@ -8,13 +8,17 @@ import java.util.UUID
  * Manages Livy sessions: can reuse or always create a new session,
  * respecting a maximum session limit. Also waits for new sessions to reach "idle".
  */
-class SessionManager(private val client: LivyClient, private val maxSessions: Int) {
+class SessionManager(
+    private val client: LivySessionClient,
+    private val executionSettings: LivyPluginSettings.ConnectionProfileState,
+    private val registryState: LivyPluginSettings.PluginState = LivyPluginSettings.getInstance().pluginState
+) {
 
     private val activeSessions = mutableListOf<Session>()
-    private val settingsState: LivyPluginSettings.PluginState
-        get() = LivyPluginSettings.getInstance().pluginState
     private val serverUrl: String
         get() = client.getBaseUrl()
+    private val maxSessions: Int
+        get() = executionSettings.maxSessions
 
     init {
         refreshSessions()
@@ -28,14 +32,13 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
 
     fun getSession(indicator: ProgressIndicator? = null): Session {
         refreshSessions()
-        val settings = settingsState
-        val strategy = settings.sessionManagementStrategy
-        val desiredSpec = LivySessionSpecFactory.fromSettings(settings, serverUrl)
+        val strategy = executionSettings.sessionManagementStrategy
+        val desiredSpec = LivySessionSpecFactory.fromSettings(executionSettings, serverUrl)
 
         return when (strategy) {
             "always_create" -> createNewSessionOrThrow(desiredSpec, indicator)
             "reuse" -> {
-                val matchingIds = LivyManagedSessions.matchingSessionIds(settings, serverUrl, desiredSpec.fingerprint)
+                val matchingIds = LivyManagedSessions.matchingSessionIds(registryState, serverUrl, desiredSpec.fingerprint)
                 val availableSession = activeSessions.find { it.id != null && it.id in matchingIds && it.state == "idle" }
                 availableSession ?: createNewSessionOrThrow(desiredSpec, indicator)
             }
@@ -48,15 +51,14 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
         indicator: ProgressIndicator? = null
     ): Session {
         refreshSessions()
-        val settings = settingsState
-        val managedSessionIds = LivyManagedSessions.managedSessionIdsForServer(settings, serverUrl)
+        val managedSessionIds = LivyManagedSessions.managedSessionIdsForServer(registryState, serverUrl)
         val managedActiveSessions = activeSessions.filter { session ->
             val sessionId = session.id
             sessionId != null && sessionId in managedSessionIds && session.state !in TERMINAL_STATES
         }
 
         if (managedActiveSessions.size >= maxSessions) {
-            if (settings.killOldestIfFull) {
+            if (executionSettings.killOldestIfFull) {
                 killOldestIdleSessionOrThrow()
             } else {
                 throw RuntimeException("No available managed sessions. Max managed session limit ($maxSessions) reached.")
@@ -66,7 +68,7 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
     }
 
     fun createNewSession(indicator: ProgressIndicator? = null): Session {
-        val spec = LivySessionSpecFactory.fromSettings(settingsState, serverUrl, generatedName = "Livy Query Console ${UUID.randomUUID()}")
+        val spec = LivySessionSpecFactory.fromSettings(executionSettings, serverUrl, generatedName = "Livy Work File ${UUID.randomUUID()}")
         return createNewSession(spec, indicator)
     }
 
@@ -77,7 +79,7 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
 
         val session = client.createSession(spec.config)
         val sessionId = session.id ?: throw RuntimeException("Livy returned a session without id.")
-        LivyManagedSessions.remember(settingsState, sessionId, serverUrl, spec.fingerprint)
+        LivyManagedSessions.remember(registryState, sessionId, serverUrl, spec.fingerprint)
         activeSessions.add(session)
         return waitForSessionIdle(session, indicator)
     }
@@ -85,7 +87,7 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
     private fun killOldestIdleSessionOrThrow() {
         refreshSessions()
         val managedEntriesById = LivyManagedSessions
-            .managedEntriesForServer(settingsState, serverUrl)
+            .managedEntriesForServer(registryState, serverUrl)
             .associateBy { it.sessionId }
         val idleSessions = activeSessions.filter { it.state == "idle" && it.id != null && it.id in managedEntriesById.keys }
         val oldestIdle = idleSessions.minWithOrNull(
@@ -97,7 +99,7 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
 
         if (oldestIdle?.id != null) {
             client.deleteSession(oldestIdle.id)
-            LivyManagedSessions.forget(settingsState, oldestIdle.id, serverUrl)
+            LivyManagedSessions.forget(registryState, oldestIdle.id, serverUrl)
             activeSessions.removeIf { it.id == oldestIdle.id }
         } else {
             throw RuntimeException("All managed sessions are busy. No idle managed session to kill, but max limit is reached.")
@@ -114,7 +116,7 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
             val state = current.state
             if (state == "idle") return current
             if (state in TERMINAL_STATES) {
-                LivyManagedSessions.forget(settingsState, id, serverUrl)
+                LivyManagedSessions.forget(registryState, id, serverUrl)
                 break
             }
 
@@ -127,11 +129,11 @@ class SessionManager(private val client: LivyClient, private val maxSessions: In
 
     private fun syncManagedSessions() {
         val activeIds = activeSessions.mapNotNull { it.id }.toSet()
-        LivyManagedSessions.pruneMissingForServer(settingsState, serverUrl, activeIds)
+        LivyManagedSessions.pruneMissingForServer(registryState, serverUrl, activeIds)
         activeSessions
             .filter { it.id != null && it.state in TERMINAL_STATES }
             .mapNotNull { it.id }
-            .forEach { LivyManagedSessions.forget(settingsState, it, serverUrl) }
+            .forEach { LivyManagedSessions.forget(registryState, it, serverUrl) }
     }
 
     private fun checkCanceled(indicator: ProgressIndicator?) {

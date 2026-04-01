@@ -61,6 +61,12 @@ object LivyManagedSessions {
         serverUrl: String
     ): Set<Int> = managedEntriesForServer(state, serverUrl).map { it.sessionId }.toSet()
 
+    fun isManagedSession(
+        state: LivyPluginSettings.PluginState,
+        serverUrl: String,
+        sessionId: Int
+    ): Boolean = sessionId in managedSessionIdsForServer(state, serverUrl)
+
     fun matchingSessionIds(
         state: LivyPluginSettings.PluginState,
         serverUrl: String,

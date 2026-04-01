@@ -28,9 +28,11 @@ class LivyClientProvider {
         }
     }
 
-    fun fromSettings(): LivyClient {
-        val url = LivyPluginSettings.getInstance().pluginState.livyServerUrl
-        return get(url)
+    fun fromSettings(): LivyClient = fromActiveProfile()
+
+    fun fromActiveProfile(): LivyClient {
+        val settings = LivyPluginSettings.getInstance().pluginState
+        return get(settings.activeProfile().livyServerUrl)
     }
 
     companion object {

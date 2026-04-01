@@ -16,7 +16,7 @@ class LivyClient(
     baseUrl: String,
     private val client: OkHttpClient,
     private val gson: Gson
-) {
+) : LivySessionClient {
     private val log = Logger.getInstance(LivyClient::class.java)
     private val baseUrl: String = baseUrl.trimEnd('/')
 
@@ -54,7 +54,7 @@ class LivyClient(
         }
     }
 
-    fun createSession(sessionConfig: SessionConfig): Session {
+    override fun createSession(sessionConfig: SessionConfig): Session {
         val url = "$baseUrl/sessions"
         val json = gson.toJson(sessionConfig)
 
@@ -74,7 +74,7 @@ class LivyClient(
         }
     }
 
-    fun getSession(sessionId: Int): Session {
+    override fun getSession(sessionId: Int): Session {
         val url = "$baseUrl/sessions/$sessionId"
         val request = Request.Builder().url(url).get().build()
 
@@ -85,7 +85,7 @@ class LivyClient(
         }
     }
 
-    fun deleteSession(sessionId: Int) {
+    override fun deleteSession(sessionId: Int) {
         val url = "$baseUrl/sessions/$sessionId"
         val request = Request.Builder().url(url).delete().build()
 
@@ -126,7 +126,9 @@ class LivyClient(
         return getSessionsResponse(from, size).sessions
     }
 
-    fun getAllSessions(pageSize: Int = 100): List<Session> {
+    override fun getAllSessions(): List<Session> = getAllSessions(pageSize = 100)
+
+    fun getAllSessions(pageSize: Int): List<Session> {
         val allSessions = mutableListOf<Session>()
         var from = 0
 
@@ -147,7 +149,7 @@ class LivyClient(
         return allSessions
     }
 
-    fun getBaseUrl(): String = baseUrl
+    override fun getBaseUrl(): String = baseUrl
 
     private fun getSessionsResponse(from: Int, size: Int): SessionsResponse {
         val url = "$baseUrl/sessions?from=$from&size=$size"

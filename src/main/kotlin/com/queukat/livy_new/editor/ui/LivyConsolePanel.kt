@@ -4,8 +4,13 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.intellij.icons.AllIcons
 import com.intellij.ide.ActivityTracker
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
@@ -23,6 +28,7 @@ import com.queukat.livy_new.*
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.Font
+import java.awt.datatransfer.StringSelection
 import javax.swing.*
 import javax.swing.table.DefaultTableModel
 
@@ -32,22 +38,35 @@ class LivyConsolePanel(
 ) : JPanel(BorderLayout()) {
 
     private val gsonPretty: Gson = GsonBuilder().setPrettyPrinting().create()
+    private val executionTarget = LivyExecutionTargets.resolve(file)
+    private val workFileMode = executionTarget.workFileMode()
+    private val editorFileType = workFileMode.resolveEditorFileType()
 
     private val progressBar = JProgressBar().apply {
         isIndeterminate = true
         isVisible = false
     }
 
-    private val infoLabel = JBLabel("Tip: If some text is selected here, only that selection will be executed.").apply {
+    private val contextLabel = JBLabel().apply {
         foreground = UIUtil.getContextHelpForeground()
     }
 
-    private val codeDocument = EditorFactory.getInstance().createDocument(readFileText(file))
+    private val infoLabel = JBLabel(buildInfoText()).apply {
+        foreground = UIUtil.getContextHelpForeground()
+        toolTipText = buildHeaderTooltip()
+    }
+
+    private val modeLabel = JBLabel().apply {
+        foreground = UIUtil.getContextHelpForeground()
+        toolTipText = buildHeaderTooltip()
+    }
+
+    private val codeDocument = resolveCodeDocument()
 
     private val codeField = EditorTextField(
         codeDocument,
         project,
-        FileTypes.PLAIN_TEXT,
+        editorFileType,
         /* isViewer = */ false,
         /* oneLineMode = */ false
     ).apply {
@@ -62,29 +81,48 @@ class LivyConsolePanel(
     @Volatile
     private var isRunning = false
     @Volatile
-    private var currentStatementId: Int? = null
+    private var currentStatement: LivyStatementRef? = null
     @Volatile
-    private var lastUsedSessionId: Int? = null
+    private var lastUsedSession: LivySessionRef? = null
     @Volatile
     private var currentIndicator: ProgressIndicator? = null
     @Volatile
     private var disposed = false
 
     private val toolbar: ActionToolbar
+    private val draftListener = object : DocumentListener {
+        override fun documentChanged(event: DocumentEvent) {
+            rememberCurrentDraft()
+        }
+    }
 
     init {
+        contextLabel.toolTipText = buildHeaderTooltip()
+        updateContextLabel()
+
         val group = DefaultActionGroup().apply {
-            add(RunAction())
+            add(RunCurrentAction())
+            add(RunFileAction())
             add(CancelAction())
             add(ShowLogsAction())
+            add(HistoryAction())
+            add(OpenSourceAction())
         }
         toolbar = ActionManager.getInstance().createActionToolbar("LivyConsoleToolbar", group, true).apply {
             targetComponent = this@LivyConsolePanel
         }
 
+        val helpPanel = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+            add(contextLabel)
+            add(modeLabel)
+            add(infoLabel)
+        }
+
         val top = JPanel(BorderLayout()).apply {
             add(toolbar.component, BorderLayout.NORTH)
-            add(infoLabel, BorderLayout.SOUTH)
+            add(helpPanel, BorderLayout.SOUTH)
         }
 
         val codePanel = JPanel(BorderLayout()).apply {
@@ -99,20 +137,29 @@ class LivyConsolePanel(
 
         add(progressBar, BorderLayout.NORTH)
         add(splitter, BorderLayout.CENTER)
+        codeDocument.addDocumentListener(draftListener)
     }
 
-    private inner class RunAction : DumbAwareAction("Run", "Run code via Livy", AllIcons.Actions.Execute) {
+    private inner class RunCurrentAction : DumbAwareAction("Run Current", "Run current selection or statement via Livy", AllIcons.Actions.Execute) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = !isRunning && currentRunnableText().isNotBlank()
+        }
+        override fun actionPerformed(e: AnActionEvent) = executeCode()
+    }
+
+    private inner class RunFileAction : DumbAwareAction("Run File", "Run the full work file via Livy", AllIcons.Actions.Execute) {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
             e.presentation.isEnabled = !isRunning && codeField.text.isNotBlank()
         }
-        override fun actionPerformed(e: AnActionEvent) = executeCode()
+        override fun actionPerformed(e: AnActionEvent) = executeCode(explicitCode = codeField.text)
     }
 
     private inner class CancelAction : DumbAwareAction("Cancel", "Cancel running statement", AllIcons.Actions.Suspend) {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = isRunning && currentStatementId != null && lastUsedSessionId != null
+            e.presentation.isEnabled = isRunning && currentStatement != null
         }
         override fun actionPerformed(e: AnActionEvent) = cancelStatement()
     }
@@ -120,23 +167,45 @@ class LivyConsolePanel(
     private inner class ShowLogsAction : DumbAwareAction("Show Logs", "Show logs for last used session", AllIcons.Toolwindows.ToolWindowMessages) {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = lastUsedSessionId != null
+            e.presentation.isEnabled = lastUsedSession != null
         }
         override fun actionPerformed(e: AnActionEvent) = showLogs()
     }
 
+    private inner class HistoryAction : DumbAwareAction("History", "Show recent local snippets for this profile", AllIcons.Actions.SearchWithHistory) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        override fun update(e: AnActionEvent) {
+            val settings = LivyPluginSettings.getInstance().pluginState
+            e.presentation.isEnabled = settings.historyEntriesForProfile(executionTarget.profileId).isNotEmpty()
+        }
+        override fun actionPerformed(e: AnActionEvent) = showHistory()
+    }
+
+    private inner class OpenSourceAction : DumbAwareAction("Open Source", "Jump back to the last source routed into this work file", AllIcons.Actions.EditSource) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = currentSourceOrigin() != null
+        }
+        override fun actionPerformed(e: AnActionEvent) = openSourceOrigin()
+    }
+
     private fun executeCode() {
-        val ed = codeField.editor
-        val selection = ed?.selectionModel?.selectedText?.takeIf { it.isNotBlank() }
-        val code = selection ?: codeField.text
+        executeCode(explicitCode = null)
+    }
+
+    private fun executeCode(explicitCode: String?) {
+        val code = explicitCode ?: currentRunnableText()
+        val sourceOrigin = currentSourceOrigin()
 
         if (code.isBlank()) {
             Messages.showInfoMessage(project, "No code to run.", "Livy")
             return
         }
 
+        rememberCurrentDraft()
+
         setRunning(true)
-        currentStatementId = null
+        currentStatement = null
 
         var executionResult: ExecutionResult? = null
 
@@ -144,18 +213,17 @@ class LivyConsolePanel(
             override fun run(indicator: ProgressIndicator) {
                 currentIndicator = indicator
                 try {
-                    val settings = LivyPluginSettings.getInstance().pluginState
-                    val client = LivyClientProvider.getInstance().fromSettings()
-                    val sessionManager = SessionManager(client, settings.maxSessions)
+                    val client = LivyClientProvider.getInstance().get(executionTarget.baseUrl)
+                    val sessionManager = SessionManager(client, executionTarget.settingsSnapshot)
 
                     val session = sessionManager.getSession(indicator)
                     val sessionId = session.id ?: throw RuntimeException("Livy returned a session without id.")
-                    lastUsedSessionId = sessionId
+                    lastUsedSession = LivySessionRef(executionTarget.baseUrl, sessionId)
 
                     checkCanceled(indicator)
                     val statement = client.runStatement(sessionId, code)
                     val statementId = statement.id ?: throw RuntimeException("Livy returned a statement without id.")
-                    currentStatementId = statementId
+                    currentStatement = LivyStatementRef(executionTarget.baseUrl, sessionId, statementId)
 
                     val finalStatement = waitForStatementAvailable(
                         client = client,
@@ -164,7 +232,7 @@ class LivyConsolePanel(
                         indicator = indicator,
                         timeoutMs = STATEMENT_WAIT_TIMEOUT_MS
                     )
-                    executionResult = ExecutionResult(sessionId, finalStatement)
+                    executionResult = ExecutionResult(sessionId, finalStatement, sourceOrigin)
                 } finally {
                     currentIndicator = null
                 }
@@ -173,20 +241,34 @@ class LivyConsolePanel(
             override fun onSuccess() {
                 val result = executionResult ?: return
                 if (disposed) return
+                LivyPluginSettings.getInstance().pluginState.recordConsoleHistory(
+                    target = executionTarget,
+                    snippet = code,
+                    status = historyStatusFor(result.statement),
+                    sessionId = result.sessionId,
+                    statementId = result.statement.id
+                )
                 statementCounter++
-                addResultTab(result.sessionId, result.statement, "Result #$statementCounter")
+                addResultTab(result.sessionId, result.statement, "Result #$statementCounter", result.sourceOrigin)
+                updateContextLabel()
             }
 
             override fun onThrowable(error: Throwable) {
                 if (error is ProcessCanceledException || disposed) return
+                LivyPluginSettings.getInstance().pluginState.recordConsoleHistory(
+                    target = executionTarget,
+                    snippet = code,
+                    status = "failed_to_start"
+                )
                 Messages.showErrorDialog(project, "Failed to execute code: ${error.message}", "Livy Error")
             }
 
             override fun onFinished() {
                 currentIndicator = null
-                currentStatementId = null
+                currentStatement = null
                 if (!disposed) {
                     setRunning(false)
+                    updateContextLabel()
                 } else {
                     isRunning = false
                     progressBar.isVisible = false
@@ -196,20 +278,25 @@ class LivyConsolePanel(
     }
 
     private fun cancelStatement() {
-        val statementId = currentStatementId
-        val sessionId = lastUsedSessionId
+        val statementRef = currentStatement
         currentIndicator?.cancel()
-        if (statementId == null || sessionId == null) return
+        if (statementRef == null) return
 
         LivyBackground.run(
             project = project,
             title = "Cancelling Livy statement",
             action = { _ ->
-                LivyClientProvider.getInstance().fromSettings().cancelStatement(sessionId, statementId)
+                LivyClientProvider.getInstance()
+                    .get(statementRef.baseUrl)
+                    .cancelStatement(statementRef.sessionId, statementRef.statementId)
             },
             onSuccessUi = {
                 if (!disposed) {
-                    Messages.showInfoMessage(project, "Cancel requested for statement #$statementId.", "Livy")
+                    Messages.showInfoMessage(
+                        project,
+                        "Cancel requested for statement #${statementRef.statementId} on ${executionTarget.profileName} (${statementRef.baseUrl}).",
+                        "Livy"
+                    )
                 }
             },
             onErrorUi = { error ->
@@ -221,23 +308,55 @@ class LivyConsolePanel(
     }
 
     private fun showLogs() {
-        val sessionId = lastUsedSessionId ?: run {
+        val sessionRef = lastUsedSession ?: run {
             Messages.showInfoMessage(project, "No session in use yet. Run something first!", "Livy")
             return
         }
-        SessionLogsDialog(LivyClientProvider.getInstance().fromSettings(), sessionId, project).show()
+        SessionLogsDialog(
+            client = LivyClientProvider.getInstance().get(sessionRef.baseUrl),
+            sessionId = sessionRef.sessionId,
+            project = project,
+            serverUrl = sessionRef.baseUrl,
+            profileName = executionTarget.profileName
+        ).show()
     }
 
-    private fun createOutputPanel(sessionId: Int, statement: Statement): JPanel {
+    private fun showHistory() {
+        LivyHistoryDialog(
+            project = project,
+            executionTarget = executionTarget,
+            onInsertSnippet = { snippet -> insertSnippet(snippet) },
+            onReplaceSnippet = { snippet -> replaceEditorText(snippet) },
+            onRunSnippet = { snippet ->
+                replaceEditorText(snippet)
+                executeCode(explicitCode = snippet)
+            }
+        ).show()
+    }
+
+    private fun openSourceOrigin() {
+        val origin = currentSourceOrigin() ?: run {
+            Messages.showInfoMessage(project, "This work file has no source origin yet.", "Livy")
+            return
+        }
+        if (!origin.navigate(project)) {
+            Messages.showErrorDialog(project, "Failed to open source: ${origin.sourcePath}", "Livy")
+        }
+    }
+
+    private fun createOutputPanel(sessionId: Int, statement: Statement, sourceOrigin: LivySourceOrigin?): JPanel {
         val out = statement.output
         val status = out?.status.orEmpty()
 
         val rawJson = gsonPretty.toJson(out)
         val rawTextArea = JTextArea(
             buildString {
+                appendLine("Profile: ${executionTarget.profileName}")
+                appendLine("Server URL: ${executionTarget.baseUrl}")
                 appendLine("Session ID: $sessionId")
                 appendLine("Statement ID: ${statement.id ?: "?"}")
                 appendLine("State: ${statement.state ?: "?"}")
+                sourceOrigin?.let { appendLine("Source: ${it.presentableLabel()}") }
                 appendLine()
                 append(rawJson)
             }
@@ -296,7 +415,53 @@ class LivyConsolePanel(
             tabs.selectedIndex = tabs.tabCount - 1
         }
 
-        return JPanel(BorderLayout()).apply { add(tabs, BorderLayout.CENTER) }
+        val summaryLabel = JBLabel(
+            buildString {
+                append("Session #$sessionId | Statement #${statement.id ?: "?"} | State: ${statement.state.orEmpty().ifBlank { "unknown" }} | Output: ${status.ifBlank { "n/a" }}")
+                sourceOrigin?.let { append(" | Source: ${it.presentableLabel()}") }
+            }
+        ).apply {
+            foreground = UIUtil.getContextHelpForeground()
+        }
+        val actionsPanel = JPanel().apply {
+            val code = statement.code.orEmpty()
+            add(JButton("Reuse Code").apply {
+                isEnabled = code.isNotBlank()
+                addActionListener { replaceEditorText(code) }
+            })
+            add(JButton("Inspect").apply {
+                addActionListener {
+                    LivyStatementDetailsDialog(
+                        project = project,
+                        sessionId = sessionId,
+                        statement = statement,
+                        executionTarget = executionTarget,
+                        sourceOrigin = sourceOrigin
+                    ).show()
+                }
+            })
+            add(JButton("Source").apply {
+                isEnabled = sourceOrigin != null
+                addActionListener {
+                    if (sourceOrigin != null && !sourceOrigin.navigate(project)) {
+                        Messages.showErrorDialog(project, "Failed to open source: ${sourceOrigin.sourcePath}", "Livy")
+                    }
+                }
+            })
+            add(JButton("Copy Raw").apply {
+                addActionListener {
+                    CopyPasteManager.getInstance().setContents(StringSelection(rawTextArea.text))
+                }
+            })
+        }
+
+        return JPanel(BorderLayout()).apply {
+            add(JPanel(BorderLayout()).apply {
+                add(summaryLabel, BorderLayout.CENTER)
+                add(actionsPanel, BorderLayout.EAST)
+            }, BorderLayout.NORTH)
+            add(tabs, BorderLayout.CENTER)
+        }
     }
 
     internal fun addPreviewResult(
@@ -305,7 +470,7 @@ class LivyConsolePanel(
         title: String = "Preview"
     ) {
         if (disposed) return
-        addResultTab(sessionId, statement, title)
+        addResultTab(sessionId, statement, title, currentSourceOrigin())
     }
 
     private fun buildPrettyText(out: StatementOutput?): String {
@@ -353,6 +518,114 @@ class LivyConsolePanel(
         throw RuntimeException("Timed out waiting for statement #$statementId to finish.")
     }
 
+    private fun currentRunnableText(): String {
+        val editor = codeField.editor
+        val selection = editor?.selectionModel?.selectedText?.takeIf { it.isNotBlank() }
+        if (selection != null) return selection
+        if (workFileMode.statementAwareRun) {
+            val caretOffset = editor?.caretModel?.offset ?: codeDocument.textLength
+            val currentStatement = resolveSqlStatementAtCaret(codeDocument.text, caretOffset)?.text.orEmpty()
+            if (currentStatement.isNotBlank()) return currentStatement
+        }
+        return codeField.text
+    }
+
+    fun applyWorkSurfaceRequest(request: LivyWorkSurfaceRequest) {
+        request.origin?.let { LivySourceOrigins.attach(file, it) }
+        when (request.contentMode) {
+            LivyWorkSurfaceContentMode.NONE -> {}
+            LivyWorkSurfaceContentMode.REPLACE -> replaceEditorText(request.snippet)
+            LivyWorkSurfaceContentMode.INSERT -> appendSnippetBlock(request.snippet)
+        }
+        updateContextLabel()
+        if (request.autorun && request.snippet.isNotBlank()) {
+            executeCode(explicitCode = request.snippet)
+        }
+    }
+
+    private fun initialConsoleText(): String {
+        val fileText = readFileText(file)
+        val settings = LivyPluginSettings.getInstance().pluginState
+        return resolveInitialConsoleText(
+            fileText = fileText,
+            savedDraft = settings.draftTextForProfile(
+                executionTarget.profileId,
+                executionTarget.settingsSnapshot.kind
+            ),
+            localHistoryEnabled = settings.localHistoryEnabled
+        )
+    }
+
+    private fun buildInfoText(): String {
+        return if (workFileMode.statementAwareRun) {
+            "Run Current: selection -> SQL statement -> file."
+        } else {
+            "Run Current: selection -> file."
+        }
+    }
+
+    private fun buildHeaderTooltip(): String = buildString {
+        append("<html>")
+        append("This work file stays bound to the captured profile snapshot.<br>")
+        append("Source-aware actions can route selection, line, or file into this surface.<br>")
+        if (LivyPluginSettings.getInstance().pluginState.localHistoryEnabled) {
+            append("Local history restores the last draft for this profile and execution kind.")
+        } else {
+            append("Local history is disabled in settings.")
+        }
+        append("</html>")
+    }
+
+    private fun rememberCurrentDraft() {
+        LivyPluginSettings.getInstance().pluginState.rememberConsoleDraft(
+            profileId = executionTarget.profileId,
+            languageOrKind = executionTarget.settingsSnapshot.kind,
+            text = codeDocument.text
+        )
+        FileDocumentManager.getInstance().getFile(codeDocument)?.let { _ ->
+            FileDocumentManager.getInstance().saveDocument(codeDocument)
+        }
+    }
+
+    private fun replaceEditorText(text: String) {
+        WriteAction.run<RuntimeException> {
+            codeDocument.setText(text)
+        }
+        codeField.editor?.caretModel?.moveToOffset(codeDocument.textLength)
+    }
+
+    private fun insertSnippet(snippet: String) {
+        val editor = codeField.editor
+        val offset = editor?.caretModel?.offset?.coerceIn(0, codeDocument.textLength) ?: codeDocument.textLength
+        WriteAction.run<RuntimeException> {
+            codeDocument.insertString(offset, snippet)
+        }
+        editor?.caretModel?.moveToOffset((offset + snippet.length).coerceAtMost(codeDocument.textLength))
+    }
+
+    private fun appendSnippetBlock(snippet: String) {
+        if (snippet.isBlank()) return
+        val prefix = when {
+            codeDocument.text.isBlank() -> ""
+            codeDocument.text.endsWith("\n\n") -> ""
+            codeDocument.text.endsWith("\n") -> "\n"
+            else -> "\n\n"
+        }
+        replaceEditorText(codeDocument.text + prefix + snippet)
+    }
+
+    private fun resolveCodeDocument() =
+        FileDocumentManager.getInstance().getDocument(file)?.also { document ->
+            val initialText = initialConsoleText()
+            if (document.text.isBlank() && initialText.isNotBlank()) {
+                WriteAction.run<RuntimeException> {
+                    document.setText(initialText)
+                }
+            }
+        } ?: EditorFactory.getInstance().createDocument(initialConsoleText())
+
+    private fun currentSourceOrigin(): LivySourceOrigin? = LivySourceOrigins.resolve(file)
+
     private fun parseAsciiTableOrNull(asciiTable: String): JTable? {
         val lines = asciiTable.lines().map { it.trimEnd() }
         val borderIndices = lines.mapIndexedNotNull { i, line ->
@@ -397,7 +670,8 @@ class LivyConsolePanel(
     }
 
     private fun readFileText(vf: VirtualFile): String =
-        try { String(vf.contentsToByteArray(), Charsets.UTF_8) } catch (_: Exception) { "" }
+        FileDocumentManager.getInstance().getDocument(vf)?.text
+            ?: try { String(vf.contentsToByteArray(), Charsets.UTF_8) } catch (_: Exception) { "" }
 
     private fun setRunning(running: Boolean) {
         isRunning = running
@@ -405,17 +679,32 @@ class LivyConsolePanel(
         ActivityTracker.getInstance().inc()
     }
 
-    private fun addResultTab(sessionId: Int, statement: Statement, title: String) {
-        val outputPanel = createOutputPanel(sessionId, statement)
+    private fun updateContextLabel() {
+        val sessionText = lastUsedSession?.let { "Last session: #${it.sessionId}" } ?: "No session yet"
+        val statementText = currentStatement?.let { "Running statement: #${it.statementId}" } ?: "Idle"
+        val sourceText = currentSourceOrigin()?.let { "Source: ${it.presentableLabel()}" } ?: "Source: manual work file"
+        val highlighting = if (editorFileType == FileTypes.PLAIN_TEXT) {
+            "Plain Text"
+        } else {
+            editorFileType.displayName
+        }
+        contextLabel.text = "Profile: ${executionTarget.profileName} | ${workFileMode.displayName} | ${executionTarget.baseUrl}"
+        modeLabel.text = "$sourceText | $sessionText | $statementText | Editor: $highlighting"
+    }
+
+    private fun addResultTab(sessionId: Int, statement: Statement, title: String, sourceOrigin: LivySourceOrigin?) {
+        val outputPanel = createOutputPanel(sessionId, statement, sourceOrigin)
         resultsTabbedPane.addTab(title, outputPanel)
         resultsTabbedPane.selectedIndex = resultsTabbedPane.tabCount - 1
     }
 
     fun disposePanel() {
         disposed = true
+        codeDocument.removeDocumentListener(draftListener)
+        rememberCurrentDraft()
         currentIndicator?.cancel()
         currentIndicator = null
-        currentStatementId = null
+        currentStatement = null
         isRunning = false
         progressBar.isVisible = false
     }
@@ -428,7 +717,8 @@ class LivyConsolePanel(
 
     private data class ExecutionResult(
         val sessionId: Int,
-        val statement: Statement
+        val statement: Statement,
+        val sourceOrigin: LivySourceOrigin?
     )
 
     companion object {

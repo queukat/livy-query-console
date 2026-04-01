@@ -9,9 +9,17 @@ plugins {
     alias(libs.plugins.version.catalog.update)
 }
 
+val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+val basePluginVersion = "1.5"
+val pluginVersionSuffix = providers.gradleProperty("pluginVersionSuffix").orNull?.trim().orEmpty()
+
 
 group = "com.queukat"
-version = "1.4"
+version = if (pluginVersionSuffix.isBlank()) {
+    basePluginVersion
+} else {
+    "$basePluginVersion-$pluginVersionSuffix"
+}
 
 repositories {
     mavenCentral()
@@ -47,6 +55,14 @@ tasks {
         useJUnitPlatform {
             excludeTags("screenshots")
         }
+    }
+
+    named<org.jetbrains.intellij.tasks.BuildSearchableOptionsTask>("buildSearchableOptions") {
+        enabled = !isWindowsHost
+    }
+
+    named<org.jetbrains.intellij.tasks.JarSearchableOptionsTask>("jarSearchableOptions") {
+        enabled = !isWindowsHost
     }
 
     val testSourceSet = the<SourceSetContainer>()["test"]

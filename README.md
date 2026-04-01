@@ -12,9 +12,11 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 
 ## Features
 
-- **Livy Console editor** (virtual file): write code and execute it via Livy.
-  - If you select text in the editor, **only the selection is executed**.
-  - Otherwise the whole editor content is sent.
+- **Livy work file**: open a reusable Livy editor surface and route source snippets into it.
+  - Use editor/project popup actions to **open source in a Livy work file**
+  - Or run the **current selection or line** / **whole file** in Livy without leaving the IDE workflow
+  - The work file follows the bound execution kind (`sql`, `pyspark` / `python`, or fallback plain Spark text) and uses host-IDE highlighting where that file type support is available
+  - Inside a SQL-bound work file, **Run Current** uses a documented semicolon-based statement heuristic around the caret; **Run File** always runs the full work file
 - **Result viewer**: each execution opens a new tab with:
   - **Raw**: full Livy JSON output
   - **Pretty**: human-readable view (including error details + traceback when available)
@@ -23,9 +25,12 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
   - List active sessions
   - Refresh
   - Open **Statements** and **Logs** dialogs for the selected session
+- **Local work-file history & last-draft restore**
+  - Recent snippets are stored locally per profile with bounded retention
+  - Reuse, replace, rerun, or copy a recent snippet from the work-file history dialog
 - **Session logs dialog** with quick search (find next/prev)
-- **Statements browser** for a session
-- **Configurable connection & managed-session options** (Livy URL, kind, resources, TTL, conf, etc.)
+- **Statements browser** for a session with deeper statement details and "open in work file" reuse
+- **Multiple connection profiles** with per-profile Livy URL, session kind, resource settings, and managed-session options
 
 ---
 
@@ -57,13 +62,32 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 
 ## Quick Start
 
-1. Open **Tools → Livy → Livy: Open Query Console**
+1. Open **Tools → Livy → Livy: Open Work File**
 2. Configure **Settings → Tools → Livy**:
-   - Livy Server URL (e.g. `http://localhost:8998`)
-   - Session kind: `spark` / `pyspark` / `sql`
+   - Create one or more named connection profiles
+   - Set each profile's Livy Server URL (e.g. `http://localhost:8998`)
+   - Set session kind: `spark` / `pyspark` / `sql`
    - Optional resources (driver/executor memory, cores, etc.)
+   - Choose which profile is the default for new work-file/sessions loads
    - Reuse applies only to plugin-managed sessions created for the same server and matching configuration
-3. Write a snippet and click **Run**
+3. Choose the profile to bind the work file or run action to
+4. Use the editor/project **Livy** popup group to open source in a work file or run the current selection/line/file directly
+5. In the work file, use **Run Current** for selection-or-statement execution and **Run File** for a full resend
+6. Reuse recent snippets from the work-file **History** action or let an empty work file restore the last local draft for that profile and execution kind
+
+## Supported Boundary (Current Scope)
+
+- The plugin now supports **multiple named connection profiles** in IDE settings.
+- Each new Livy work file or sessions refresh binds itself to the **selected profile snapshot** captured when that flow starts.
+- If you later edit settings or switch the active/default profile, **open a new work file or refresh sessions again** to use the new target. Existing loaded contexts do not silently switch.
+- Optional local history stores recent snippets and the last draft **locally in plain text** with bounded retention. It is meant for quick rerun/reuse, not notebook or remote-session restore.
+- Managed-session reuse/cleanup applies only to **plugin-managed sessions on the same server with matching configuration**.
+- IDE-native entrypoints cover opening source in a Livy work file and running the current selection or line / whole file. This is still a lightweight execution workflow, not semantic Spark language tooling.
+- The work file is now **language-aware, not language-smart**: it reuses SQL/Python/plain-text editor support when the host IDE already has it, but it does not add its own parser, completion, inspections, or refactorings.
+- SQL work files support a narrow **semicolon-delimited current-statement heuristic** for `Run Current`. If that heuristic is ambiguous, the plugin falls back to running the whole work file.
+- Best fit today: direct or already JVM-trusted Livy HTTP(S) endpoints where plain connectivity is enough.
+- Not stored by local history: auth material, credentials, cookies, headers, or full remote session state.
+- Not included (because not implemented yet): auth headers/tokens/cookies, Kerberos, OAuth, secure credential storage, SQL dialect intelligence, Python block analysis, or notebook cells.
 
 ### Example: Scala / Spark
 ```scala
@@ -123,6 +147,9 @@ Recommended fixes:
 The resulting ZIP is usually in:
 `build/distributions/`
 
+On Windows local builds, searchable-options generation is skipped because the upstream IDE task is currently reproducibly failing with a mapped-file error on this project baseline.
+Linux CI/release builds still run the full searchable-options path.
+
 ### Useful Gradle tasks
 - `verifyPlugin`
 - `buildPlugin`
@@ -143,12 +170,13 @@ Generated PNG files are written to:
 
 - **CI**: `.github/workflows/ci.yml`
   - Runs on push/PR
-  - Validates wrapper, runs tests, builds plugin ZIP artifact
+  - Validates wrapper, runs tests, builds plugin ZIP artifact, runs `verifyPlugin`
 - **GitHub Release**: `.github/workflows/release.yml`
   - Runs on tag push `v*`
-  - Builds plugin and attaches ZIP to GitHub Release automatically
+  - Re-runs tests/build/`verifyPlugin`, then attaches ZIP to GitHub Release automatically
 - **Marketplace publish (manual)**: `.github/workflows/publish-marketplace.yml`
   - Run manually from GitHub Actions UI
+  - Re-runs tests/build/`verifyPlugin` before `publishPlugin`
   - Requires repository secret: `PUBLISH_TOKEN`
   - Optional signing secrets (if used): `CERTIFICATE_CHAIN`, `PRIVATE_KEY`, `PRIVATE_KEY_PASSWORD`
 
@@ -156,7 +184,7 @@ Generated PNG files are written to:
 
 ## Project structure (high level)
 
-- `RunCodeViaLivyAction` — opens the Livy Console editor (virtual file)
+- `RunCodeViaLivyAction` / `RunSelectionOrLineInLivyAction` / `RunFileInLivyAction` — IDE entrypoints into the Livy work surface
 - `LivyConsoleFileEditor*` — custom editor + UI
 - `LivySessionsWindowFactory` + `LivySessionsPanel` — tool window
 - `LivyClient` — Livy REST API client (OkHttp)

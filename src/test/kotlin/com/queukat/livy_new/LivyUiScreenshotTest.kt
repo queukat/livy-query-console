@@ -33,28 +33,49 @@ class LivyUiScreenshotTest {
     @Test
     fun generateSettingsScreenshot() {
         val settings = LivyPluginSettings.getInstance().pluginState
-        settings.livyServerUrl = "https://livy.company.example"
-        settings.kind = "sql"
-        settings.proxyUser = "analytics-user"
-        settings.driverMemory = "4g"
-        settings.executorMemory = "8g"
-        settings.driverCores = 2
-        settings.executorCores = 4
-        settings.numExecutors = 4
-        settings.conf = "spark.sql.shuffle.partitions=16,spark.app.name=demo"
-        settings.ttl = "30m"
-        settings.maxSessions = 3
-        settings.sessionManagementStrategy = "reuse"
-        settings.killOldestIfFull = true
+        val prodProfile = createProfile(displayName = "Analytics Prod", livyServerUrl = "https://livy.company.example").apply {
+            kind = "sql"
+            proxyUser = "analytics-user"
+            driverMemory = "4g"
+            executorMemory = "8g"
+            driverCores = 2
+            executorCores = 4
+            numExecutors = 4
+            conf = "spark.sql.shuffle.partitions=16,spark.app.name=demo"
+            ttl = "30m"
+            maxSessions = 3
+            sessionManagementStrategy = "reuse"
+            killOldestIfFull = true
+        }
+        val stageProfile = createProfile(displayName = "Analytics Stage", livyServerUrl = "https://livy-stage.company.example").apply {
+            kind = "pyspark"
+            proxyUser = "analytics-user"
+            driverMemory = "2g"
+            executorMemory = "4g"
+        }
+        settings.profiles = mutableListOf(prodProfile, stageProfile)
+        settings.activeProfileId = prodProfile.id
+        settings.defaultProfileId = prodProfile.id
+        settings.syncLegacyFieldsFromActiveProfile()
 
         val configurable = LivyPluginConfigurable()
-        val component = configurable.createComponent() as JComponent
+        val component = configurable.createComponent()
         render(component, "settings.png", 1200, 1220)
         configurable.disposeUIResources()
     }
 
     @Test
     fun generateConsoleScreenshot() {
+        val settings = LivyPluginSettings.getInstance().pluginState
+        val profile = createProfile(displayName = "Analytics Prod", livyServerUrl = "https://livy.company.example").apply {
+            kind = "sql"
+            maxSessions = 3
+        }
+        settings.profiles = mutableListOf(profile)
+        settings.activeProfileId = profile.id
+        settings.defaultProfileId = profile.id
+        settings.syncLegacyFieldsFromActiveProfile()
+
         val project = ProjectManager.getInstance().defaultProject
         val code = """
             val df = spark.range(10)
@@ -64,6 +85,7 @@ class LivyUiScreenshotTest {
             "Livy Query Console.${LivyConsoleFileType.EXTENSION}",
             code
         )
+        LivyExecutionTargets.attach(file, LivyExecutionTarget.capture(settings, profile.id))
 
         val panel = LivyConsolePanel(project, file)
         panel.addPreviewResult(
@@ -98,6 +120,13 @@ class LivyUiScreenshotTest {
 
     @Test
     fun generateSessionsScreenshot() {
+        val settings = LivyPluginSettings.getInstance().pluginState
+        val profile = createProfile(displayName = "Analytics Prod", livyServerUrl = "https://livy.company.example")
+        settings.profiles = mutableListOf(profile)
+        settings.activeProfileId = profile.id
+        settings.defaultProfileId = profile.id
+        settings.syncLegacyFieldsFromActiveProfile()
+
         val project = ProjectManager.getInstance().defaultProject
         val panel = LivySessionsPanel(project = project, autoRefresh = false)
         panel.replaceSessions(
@@ -135,7 +164,8 @@ class LivyUiScreenshotTest {
                     queue = "batch",
                     log = listOf("Provisioning executors")
                 )
-            )
+            ),
+            LivyExecutionTarget.capture(settings, profile.id)
         )
         render(panel, "sessions.png", 1400, 520)
     }

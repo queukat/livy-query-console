@@ -40,6 +40,9 @@ jobs:
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
 
+      - name: Build and verify plugin
+        run: ./gradlew --no-daemon test buildPlugin verifyPlugin --stacktrace
+
       - name: Publish plugin
         run: ./gradlew --no-daemon publishPlugin --stacktrace
         env:

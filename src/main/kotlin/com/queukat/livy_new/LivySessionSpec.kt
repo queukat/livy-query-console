@@ -10,7 +10,7 @@ data class LivySessionSpec(
 object LivySessionSpecFactory {
 
     fun fromSettings(
-        settings: LivyPluginSettings.PluginState,
+        settings: LivyPluginSettings.ConnectionProfileState,
         serverUrl: String,
         generatedName: String = "Livy Query Console ${UUID.randomUUID()}"
     ): LivySessionSpec {
