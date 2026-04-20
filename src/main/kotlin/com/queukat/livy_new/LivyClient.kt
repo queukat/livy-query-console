@@ -32,14 +32,20 @@ class LivyClient(
             client.newCall(request).execute().use { response ->
                 val responseBody = runCatching { readBodyOrEmpty(response) }
                     .getOrElse { "<failed to read response body: ${it.javaClass.name}: ${it.message}>" }
+                val authRequired = livyResponseLooksLikeAuthenticationRequired(
+                    httpCode = response.code,
+                    responseHeaders = response.headers.toMultimap(),
+                    responseBody = responseBody
+                )
                 ConnectionTestDiagnostics(
                     requestUrl = requestUrl,
-                    success = response.isSuccessful,
+                    success = response.isSuccessful && !authRequired,
                     elapsedMs = System.currentTimeMillis() - startedAtMs,
                     httpCode = response.code,
                     httpMessage = response.message,
                     responseHeaders = response.headers.toMultimap(),
-                    responseBodyPreview = truncateForDiagnostics(responseBody, 12_000)
+                    responseBodyPreview = truncateForDiagnostics(responseBody, 12_000),
+                    authRequired = authRequired
                 )
             }
         } catch (t: Throwable) {
@@ -67,6 +73,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) {
                 throw IOException("createSession failed: ${response.code} ${response.message}. body=$bodyStr")
             }
@@ -80,6 +87,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("getSession failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, Session::class.java)
         }
@@ -91,6 +99,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("deleteSession failed: ${response.code} ${response.message}. body=$bodyStr")
         }
     }
@@ -106,6 +115,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("runStatement failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, Statement::class.java)
         }
@@ -117,6 +127,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("getSessionLogs failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, SessionLogs::class.java).log
         }
@@ -157,6 +168,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("getSessions failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, SessionsResponse::class.java)
         }
@@ -168,6 +180,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("getStatement failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, Statement::class.java)
         }
@@ -184,6 +197,7 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("cancelStatement failed: ${response.code} ${response.message}. body=$bodyStr")
         }
     }
@@ -195,12 +209,25 @@ class LivyClient(
 
         client.newCall(request).execute().use { response ->
             val bodyStr = readBodyOrEmpty(response)
+            throwIfAuthenticationRequired(response, bodyStr)
             if (!response.isSuccessful) throw IOException("listStatements failed: ${response.code} ${response.message}. body=$bodyStr")
             return gson.fromJson(bodyStr, StatementsResponse::class.java).statements ?: emptyList()
         }
     }
 
     private fun readBodyOrEmpty(response: Response): String = response.body?.string().orEmpty()
+
+    private fun throwIfAuthenticationRequired(response: Response, responseBody: String) {
+        if (!livyResponseLooksLikeAuthenticationRequired(response.code, response.headers.toMultimap(), responseBody)) {
+            return
+        }
+        throw LivyAuthenticationRequiredException(
+            httpCode = response.code,
+            httpMessage = response.message,
+            responseHeaders = response.headers.toMultimap(),
+            responseBodyPreview = truncateForDiagnostics(responseBody, 12_000)
+        )
+    }
 
     private fun truncateForDiagnostics(value: String, maxChars: Int): String {
         if (value.length <= maxChars) return value
@@ -231,9 +258,13 @@ data class ConnectionTestDiagnostics(
     val responseBodyPreview: String? = null,
     val exceptionClass: String? = null,
     val exceptionMessage: String? = null,
-    val causeChain: List<String> = emptyList()
+    val causeChain: List<String> = emptyList(),
+    val authRequired: Boolean = false
 ) {
     fun summary(): String {
+        if (authRequired) {
+            return "Connection requires browser authentication (${httpCode ?: "?"} ${httpMessage.orEmpty().trim()}, ${elapsedMs} ms)"
+        }
         if (success) {
             return "Connection successful (HTTP ${httpCode ?: "?"} ${httpMessage.orEmpty().trim()}, ${elapsedMs} ms)"
         }
@@ -251,6 +282,9 @@ data class ConnectionTestDiagnostics(
         appendLine("Request URL: $requestUrl")
         appendLine("Elapsed: ${elapsedMs} ms")
         appendLine("Result: ${if (success) "SUCCESS" else "FAILURE"}")
+        if (authRequired) {
+            appendLine("Auth hint: Browser authentication appears to be required.")
+        }
 
         if (httpCode != null) {
             appendLine("HTTP: $httpCode ${httpMessage.orEmpty().trim()}")
@@ -282,4 +316,88 @@ data class ConnectionTestDiagnostics(
             causeChain.forEach { appendLine("- $it") }
         }
     }
+}
+
+class LivyAuthenticationRequiredException(
+    val httpCode: Int,
+    val httpMessage: String,
+    val responseHeaders: Map<String, List<String>>,
+    val responseBodyPreview: String
+) : IOException(
+    buildString {
+        append("Livy endpoint requires browser authentication")
+        append(" (HTTP $httpCode ${httpMessage.trim()})")
+    }
+)
+
+fun failureLooksLikeAuthenticationRequired(failure: Throwable): Boolean {
+    if (failure is LivyAuthenticationRequiredException) return true
+    val text = buildString {
+        append(failure.message.orEmpty())
+        if (failure.cause?.message != null) {
+            append('\n')
+            append(failure.cause?.message.orEmpty())
+        }
+    }
+    return livyTextLooksLikeAuthenticationRequired(text)
+}
+
+fun livyResponseLooksLikeAuthenticationRequired(
+    httpCode: Int,
+    responseHeaders: Map<String, List<String>>,
+    responseBody: String
+): Boolean {
+    val body = responseBody.lowercase()
+    val locationHeader = responseHeaders.entries
+        .firstOrNull { it.key.equals("location", ignoreCase = true) }
+        ?.value
+        ?.joinToString(" ")
+        .orEmpty()
+        .lowercase()
+    val contentType = responseHeaders.entries
+        .firstOrNull { it.key.equals("content-type", ignoreCase = true) }
+        ?.value
+        ?.joinToString(" ")
+        .orEmpty()
+        .lowercase()
+    val loginMarkers = listOf(
+        "/oauth2/",
+        "openid-connect",
+        "authoriz",
+        "авториз",
+        "sso",
+        "sign in",
+        "login",
+        "<html"
+    )
+    val hasAuthMarker = loginMarkers.any { marker ->
+        body.contains(marker) || locationHeader.contains(marker)
+    }
+    val htmlLike = contentType.contains("text/html") || body.contains("<html")
+    if (httpCode in setOf(401, 403)) {
+        return hasAuthMarker || htmlLike
+    }
+    if (httpCode in setOf(302, 303, 307, 308)) {
+        return hasAuthMarker
+    }
+    if (httpCode in 200..299 && htmlLike) {
+        return hasAuthMarker
+    }
+    return false
+}
+
+private fun livyTextLooksLikeAuthenticationRequired(text: String): Boolean {
+    val normalized = text.lowercase()
+    val strongMarkers = listOf(
+        "requires browser authentication",
+        "openid-connect",
+        "/oauth2/",
+        "авториз",
+        "sign in",
+        "please log in"
+    )
+    if (strongMarkers.any { normalized.contains(it) }) return true
+    val hasHttpAuthCode = normalized.contains("401") || normalized.contains("403")
+    val hasLoginHint = normalized.contains("sso") || normalized.contains("login") || normalized.contains("<html")
+    return hasHttpAuthCode && hasLoginHint
 }

@@ -27,4 +27,17 @@ class LivyConsolePersistenceTest {
             resolveInitialConsoleText(fileText = "", savedDraft = "saved draft", localHistoryEnabled = false)
         )
     }
+
+    @Test
+    fun remember_console_draft_replaces_existing_entry_for_same_profile_and_kind() {
+        val state = LivyPluginSettings.PluginState().apply {
+            localHistoryEnabled = true
+        }
+
+        state.rememberConsoleDraft(profileId = "profile-a", languageOrKind = "sql", text = "select 1", updatedAtMs = 1)
+        state.rememberConsoleDraft(profileId = "profile-a", languageOrKind = "sql", text = "select 2", updatedAtMs = 2)
+
+        assertEquals(1, state.consoleDrafts.size)
+        assertEquals("select 2", state.draftTextForProfile("profile-a", "sql"))
+    }
 }

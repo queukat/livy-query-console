@@ -652,3 +652,51 @@
 - Не ушёл ли я в косметику вместо блокеров: нет, only after the feature/regression work was already completed and verified.
 - Не создаю ли я лишнюю архитектурную сложность: no, just a base version bump and updated release notes.
 - Не вру ли я себе про “готовность”: no; the release ZIP is backed by `test + buildPlugin + verifyPlugin`, not just by a version string change.
+
+### 2026-04-01 - Follow-up maintenance: Marketplace deprecated API cleanup
+- Marketplace compatibility verification for `1.5` came back compatible but noisy:
+  one deprecated `Document.addDocumentListener(DocumentListener)` usage and one deprecated `Messages.showChooseDialog(...)` usage.
+- Chosen scope stays deliberately narrow:
+  remove exactly those deprecated platform seams without changing the plugin's product behavior or reopening the just-stabilized editor/runtime flows.
+- Fix direction:
+  replace the profile chooser with a tiny `DialogWrapper`-based selector and bind the work-file draft listener to a disposable-aware document listener registration.
+- Regression coverage added where it was worth it:
+  pure tests now lock the profile-selection option model and same-profile draft replacement behavior.
+- Not included (because it was not worth the harness cost):
+  a heavyweight UI test around the modal chooser/editor lifecycle. A first attempt pulled in flaky IDE test-harness behavior on this environment, so coverage was kept at the stable model/core layer instead.
+
+### Sanity-check: а не фигню ли я делаю? (after deprecated API cleanup patch)
+- Что именно я чиню: two concrete IntelliJ platform deprecation warnings reported by Marketplace verification.
+- Почему это реально приближает к цели: it reduces release noise and future binary-compatibility risk without changing the product surface.
+- Не ушёл ли я в косметику вместо блокеров: это уже maintenance, but it is directly tied to Marketplace verification and release quality.
+- Не создаю ли я лишнюю архитектурную сложность: no, just a tiny modal chooser and disposable-bound listener lifecycle.
+- Не вру ли я себе про “готовность”: в рамках этого follow-up нет; local `test + verifyPlugin` passed and the deprecated source usages are gone, but the Marketplace verifier will only reflect it after the next uploaded build.
+
+### Verification log (deprecated API cleanup)
+- 2026-04-01: `./gradlew.bat --gradle-user-home .gradle-user-home --no-daemon test verifyPlugin --console=plain` passed after replacing the deprecated profile chooser and disposable-unsafe document-listener registration.
+- 2026-04-01: added stable regression tests for the profile-selection option model and same-profile draft replacement behavior.
+- 2026-04-01: source scan no longer finds `Messages.showChooseDialog(...)`, `removeDocumentListener(...)`, or the old no-parent-disposable `addDocumentListener(draftListener)` usage in plugin sources.
+
+### 2026-04-01 - Release prep for Marketplace verifier cleanup patch
+- Chosen release shape: ship the deprecated-API cleanup as `1.5.1`, not as an unversioned rebuild of `1.5`.
+- Reason: Marketplace compatibility verification is tied to uploaded artifacts; a distinct patch version makes the cleanup visible, auditable, and easy to reason about.
+- Scope of `1.5.1` stays intentionally narrow:
+  compatibility maintenance and regression coverage only, with no product-surface re-scope.
+
+### Sanity-check: а не фигню ли я делаю? (before 1.5.1 build)
+- Что именно я чиню: release versioning and handoff for the verifier-cleanup patch.
+- Почему это реально приближает к цели: the next Marketplace upload will correspond to a clearly versioned artifact instead of “mystery 1.5 rebuild”.
+- Не ушёл ли я в косметику вместо блокеров: нет, this is release hygiene directly attached to a verified compatibility warning cleanup.
+- Не создаю ли я лишнюю архитектурную сложность: no, just a patch-version bump and tighter release notes.
+- Не вру ли я себе про “готовность”: not yet; `test + buildPlugin + verifyPlugin` still need to pass for `1.5.1`.
+
+### Verification log (1.5.1 release prep)
+- 2026-04-01: `./gradlew.bat --gradle-user-home .gradle-user-home --no-daemon test buildPlugin verifyPlugin --stacktrace` passed after bumping the base version to `1.5.1` and rewriting Marketplace change notes for the verifier-cleanup patch.
+- 2026-04-01: built Marketplace-ready artifact `build/distributions/livy_new-1.5.1.zip`.
+
+### Sanity-check: а не фигню ли я делаю? (after 1.5.1 build)
+- Что именно я чиню: the handoff artifact for the Marketplace verifier-cleanup patch release.
+- Почему это реально приближает к цели: there is now one clear upload target with matching version, notes, tests, and local verifier pass.
+- Не ушёл ли я в косметику вместо блокеров: нет, this directly closes the Marketplace follow-up loop.
+- Не создаю ли я лишнюю архитектурную сложность: no, only release metadata and a fresh built artifact.
+- Не вру ли я себе про “готовность”: для этого patch release нет; the local release-grade gate passed and the ZIP is ready for upload.

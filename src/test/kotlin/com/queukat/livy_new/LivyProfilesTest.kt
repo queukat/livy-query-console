@@ -76,4 +76,38 @@ class LivyProfilesTest {
         assertEquals("http://livy-b", state.livyServerUrl)
         assertNotEquals(profileA.id, state.profiles.first().id)
     }
+
+    @Test
+    fun profile_selection_options_use_active_profile_as_default_choice() {
+        val profileA = createProfile(displayName = "A", livyServerUrl = "http://livy-a")
+        val profileB = createProfile(displayName = "B", livyServerUrl = "http://livy-b")
+        val state = LivyPluginSettings.PluginState().apply {
+            profiles = mutableListOf(profileA, profileB)
+            activeProfileId = profileB.id
+            defaultProfileId = profileA.id
+        }
+
+        val options = buildLivyProfileSelectionOptions(state)
+
+        assertEquals(
+            listOf("A (Default) - http://livy-a", "B (Active) - http://livy-b"),
+            options.labels
+        )
+        assertEquals(1, options.defaultIndex)
+    }
+
+    @Test
+    fun profile_selection_options_fall_back_to_first_profile_when_active_is_missing() {
+        val profileA = createProfile(displayName = "A", livyServerUrl = "http://livy-a")
+        val profileB = createProfile(displayName = "B", livyServerUrl = "http://livy-b")
+        val state = LivyPluginSettings.PluginState().apply {
+            profiles = mutableListOf(profileA, profileB)
+            activeProfileId = "missing"
+            defaultProfileId = profileA.id
+        }
+
+        val options = buildLivyProfileSelectionOptions(state)
+
+        assertEquals(0, options.defaultIndex)
+    }
 }

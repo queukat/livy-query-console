@@ -10,8 +10,11 @@ plugins {
 }
 
 val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
-val basePluginVersion = "1.5"
+val basePluginVersion = "1.5.3"
 val pluginVersionSuffix = providers.gradleProperty("pluginVersionSuffix").orNull?.trim().orEmpty()
+val marketplacePublishingToken = providers.gradleProperty("intellijPlatformPublishingToken")
+    .orElse(providers.environmentVariable("ORG_GRADLE_PROJECT_intellijPlatformPublishingToken"))
+    .orElse(providers.environmentVariable("PUBLISH_TOKEN"))
 
 
 group = "com.queukat"
@@ -114,6 +117,6 @@ tasks {
     }
 
     publishPlugin {
-        token.set(System.getenv("PUBLISH_TOKEN"))
+        token.set(marketplacePublishingToken)
     }
 }

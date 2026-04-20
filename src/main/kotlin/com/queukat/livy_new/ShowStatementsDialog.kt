@@ -125,6 +125,19 @@ class ShowStatementsDialog(
                 }
             },
             onErrorUi = { e ->
+                val target = executionTarget
+                if (
+                    target != null &&
+                        maybePromptForBrowserAuthentication(
+                            failure = e,
+                            profile = target.settingsSnapshot,
+                            project = project
+                        ) {
+                            refreshStatementsAsync()
+                        }
+                ) {
+                    return@run
+                }
                 Messages.showErrorDialog(
                     project,
                     "Failed to load statements: ${e.message}",
@@ -156,6 +169,19 @@ class ShowStatementsDialog(
                 ).show()
             },
             onErrorUi = { error ->
+                val target = executionTarget
+                if (
+                    target != null &&
+                        maybePromptForBrowserAuthentication(
+                            failure = error,
+                            profile = target.settingsSnapshot,
+                            project = project
+                        ) {
+                            inspectSelectedStatement()
+                        }
+                ) {
+                    return@run
+                }
                 Messages.showErrorDialog(project, "Failed to load statement details: ${error.message}", "Livy Error")
             }
         )

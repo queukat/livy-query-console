@@ -69,37 +69,25 @@
     Optional local history stores recent snippets and the last draft per profile in plain text on the local machine only.
     SQL work files support a narrow semicolon-delimited current-statement heuristic; PySpark/plain Spark work files stay on selection-or-file execution semantics.
     This is a lightweight execution workflow, not notebook persistence or semantic Spark language tooling.
-    Advanced auth flows such as auth headers/tokens, cookies, Kerberos, OAuth, and secure credential storage are not implemented yet.
+    For SSO-protected endpoints, the plugin can open an embedded browser, capture per-profile session cookies, and store them in the IDE Password Safe for reuse.
+    Manual auth headers/tokens, Kerberos, and generic OAuth token management outside browser-session cookies are still not implemented.
   </p>
 ]]></description>
 
 
     <change-notes><![CDATA[
-  <h3>What's new in 1.5</h3>
+  <h3>What's new in 1.5.3</h3>
   <ul>
     <li>
-      <b>Profile-safe execution</b>: consoles, work files, and loaded session views stay bound to the captured
-      Livy profile snapshot instead of silently drifting when settings change.
+      <b>Marketplace compatibility fix for 2023.3</b>: removed the JCEF cookie-manager method call that was binary-incompatible with IntelliJ IDEA 2023.3,
+      so the browser sign-in flow no longer trips Plugin Verifier on `IU-233`.
     </li>
     <li>
-      <b>Reusable Livy work file</b>: editor/project popup actions can open source in a dedicated Livy work file,
-      rerun recent snippets from local history, restore the last draft per profile/kind, and navigate back to source.
+      <b>Same SSO workflow, safer implementation</b>: browser-auth still captures the active login session for protected Livy endpoints,
+      but now does it using a cross-version cookie lookup path that is friendlier to older IDE baselines.
     </li>
     <li>
-      <b>Language-aware editor surface</b>: the work file now reflects the bound execution kind, reuses host-IDE
-      SQL/Python highlighting when available, and supports a narrow SQL current-statement run heuristic.
-    </li>
-    <li>
-      <b>Sessions workflow improvements</b>: the Livy Sessions tool window now supports safe termination of
-      plugin-managed sessions plus panel-level auto-refresh with a configurable interval.
-    </li>
-    <li>
-      <b>Better reliability</b>: the work-file/editor run path was tightened to avoid wrong-target drift,
-      duplicate request application, and editor-provider lifecycle issues.
-    </li>
-    <li>
-      <b>Honest product boundary</b>: the plugin now says explicitly where support stops:
-      direct Livy connectivity with profiles and local plain-text history, not advanced auth or notebook semantics.
+      <b>Patch release only</b>: this update is focused on verifier/runtime compatibility for the new auth flow and does not change the broader Livy profile workflow.
     </li>
   </ul>
 ]]></change-notes>

@@ -11,20 +11,46 @@ import java.util.concurrent.TimeUnit
 @Service(Service.Level.APP)
 class LivyClientProvider {
 
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    private val baseClientBuilder: OkHttpClient.Builder = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
 
     private val gson: Gson = GsonBuilder().create()
 
     private val cache = ConcurrentHashMap<String, LivyClient>()
 
     fun get(baseUrlRaw: String): LivyClient {
+        val activeProfile = LivyPluginSettings.getInstance().pluginState.activeProfile()
+        return get(activeProfile.id, baseUrlRaw)
+    }
+
+    fun get(profile: LivyPluginSettings.ConnectionProfileState): LivyClient =
+        get(profile.id, profile.livyServerUrl)
+
+    fun get(target: LivyExecutionTarget): LivyClient =
+        get(target.profileId, target.baseUrl)
+
+    fun get(profileId: String, baseUrlRaw: String): LivyClient {
         val baseUrl = baseUrlRaw.trim().trimEnd('/')
-        return cache.computeIfAbsent(baseUrl) { url ->
-            LivyClient(url, okHttpClient, gson)
+        val normalizedProfileId = profileId.trim().ifBlank { "default-profile" }
+        val cacheKey = "$normalizedProfileId|$baseUrl"
+        return cache.computeIfAbsent(cacheKey) {
+            LivyClient(
+                baseUrl,
+                baseClientBuilder
+                    .build()
+                    .newBuilder()
+                    .cookieJar(
+                        LivyProfileCookieJar(
+                            profileId = normalizedProfileId,
+                            baseUrl = baseUrl,
+                            authStore = LivyAuthSessionStore.getInstance()
+                        )
+                    )
+                    .build(),
+                gson
+            )
         }
     }
 
@@ -32,7 +58,7 @@ class LivyClientProvider {
 
     fun fromActiveProfile(): LivyClient {
         val settings = LivyPluginSettings.getInstance().pluginState
-        return get(settings.activeProfile().livyServerUrl)
+        return get(settings.activeProfile())
     }
 
     companion object {

@@ -103,6 +103,7 @@ class SessionLogsDialog(
     }
 
     private fun loadLogsAsync() {
+        val authProfile = resolveProfileForAuthPrompt()
         LivyBackground.run(
             project = project,
             title = "Loading Livy logs",
@@ -115,11 +116,36 @@ class SessionLogsDialog(
                 clearHighlights()
             },
             onErrorUi = { e ->
+                if (
+                    authProfile != null &&
+                        maybePromptForBrowserAuthentication(
+                            failure = e,
+                            profile = authProfile,
+                            project = project
+                        ) {
+                            loadLogsAsync()
+                        }
+                ) {
+                    return@run
+                }
                 textArea.text = "Failed to load logs: ${e.message}"
                 fullLogsText = textArea.text
                 statsLabel.text = "Failed to load logs for session #$sessionId."
             }
         )
+    }
+
+    private fun resolveProfileForAuthPrompt(): LivyPluginSettings.ConnectionProfileState? {
+        val normalizedServerUrl = serverUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(LivyManagedSessions::normalizeServerUrl)
+            ?: return null
+        return LivyPluginSettings.getInstance()
+            .pluginState
+            .profiles
+            .firstOrNull { LivyManagedSessions.normalizeServerUrl(it.livyServerUrl) == normalizedServerUrl }
+            ?.snapshot()
     }
 
     private fun findNext() {

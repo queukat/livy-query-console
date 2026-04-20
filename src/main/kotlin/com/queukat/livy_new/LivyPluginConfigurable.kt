@@ -29,6 +29,7 @@ class LivyPluginConfigurable : Configurable {
     private val profileComboModel = DefaultComboBoxModel<LivyPluginSettings.ConnectionProfileState>()
     private lateinit var profileCombo: JComboBox<LivyPluginSettings.ConnectionProfileState>
     private lateinit var profileStatusLabel: JLabel
+    private lateinit var authStatusLabel: JLabel
     private lateinit var localHistoryEnabledCheckbox: JCheckBox
     private lateinit var maxHistoryItemsSpinner: JSpinner
 
@@ -63,7 +64,10 @@ class LivyPluginConfigurable : Configurable {
                 label("Current scope: multiple named connection profiles with direct HTTP(S) connectivity only.")
             }
             row {
-                label("Not supported yet: auth headers/tokens/cookies, secure credential storage, Kerberos, or OAuth.")
+                label("Browser-based sign-in can capture per-profile session cookies and store them in the IDE Password Safe.")
+            }
+            row {
+                label("Not supported yet: manual auth headers/tokens, Kerberos, or generic OAuth token management outside browser-session cookies.")
             }
             row {
                 label("Existing Livy work files and loaded session views keep the profile snapshot captured when they were opened.")
@@ -141,6 +145,19 @@ class LivyPluginConfigurable : Configurable {
                 }
                 row("Proxy User:") {
                     textField().applyToComponent { proxyUserField = this }.align(AlignX.FILL)
+                }
+            }
+
+            group("Authentication") {
+                row {
+                    label("If the server is behind SSO/OAuth2 proxy, the plugin can open a login window and reuse its cookies for this profile.")
+                }
+                row {
+                    label("").applyToComponent { authStatusLabel = this }
+                }
+                row {
+                    button("Authenticate via Browser…") { authenticateSelectedProfile() }
+                    button("Clear Saved Auth") { clearSelectedProfileAuth() }
                 }
             }
 
@@ -233,6 +250,7 @@ class LivyPluginConfigurable : Configurable {
         refreshProfileCombo()
         populateProfileFields(selectedProfile())
         updateProfileStatus()
+        updateAuthStatus()
 
         return mainPanel!!
     }
@@ -249,6 +267,7 @@ class LivyPluginConfigurable : Configurable {
         refreshProfileCombo()
         populateProfileFields(selectedProfile())
         updateProfileStatus()
+        updateAuthStatus()
     }
 
     override fun reset() {
@@ -256,6 +275,7 @@ class LivyPluginConfigurable : Configurable {
         refreshProfileCombo()
         populateProfileFields(selectedProfile())
         updateProfileStatus()
+        updateAuthStatus()
         mainPanel?.reset()
     }
 
@@ -286,6 +306,7 @@ class LivyPluginConfigurable : Configurable {
         refreshProfileCombo()
         populateProfileFields(newProfile)
         updateProfileStatus()
+        updateAuthStatus()
     }
 
     private fun deleteSelectedProfile() {
@@ -310,6 +331,7 @@ class LivyPluginConfigurable : Configurable {
         refreshProfileCombo()
         populateProfileFields(selectedProfile())
         updateProfileStatus()
+        updateAuthStatus()
     }
 
     private fun markActiveProfile() {
@@ -318,6 +340,7 @@ class LivyPluginConfigurable : Configurable {
         workingState.setActiveProfile(profile.id)
         refreshProfileCombo()
         updateProfileStatus()
+        updateAuthStatus()
     }
 
     private fun markDefaultProfile() {
@@ -326,6 +349,7 @@ class LivyPluginConfigurable : Configurable {
         workingState.setDefaultProfile(profile.id)
         refreshProfileCombo()
         updateProfileStatus()
+        updateAuthStatus()
     }
 
     private fun switchSelectedProfile(nextProfileId: String?) {
@@ -333,6 +357,7 @@ class LivyPluginConfigurable : Configurable {
         selectedProfileId = nextProfileId
         populateProfileFields(selectedProfile())
         updateProfileStatus()
+        updateAuthStatus()
     }
 
     private fun refreshProfileCombo() {
@@ -433,27 +458,73 @@ class LivyPluginConfigurable : Configurable {
         }
     }
 
+    private fun updateAuthStatus() {
+        if (!::authStatusLabel.isInitialized) return
+        val profile = selectedProfile()
+        authStatusLabel.text = if (profile == null) {
+            "Browser auth: no profile selected."
+        } else {
+            val normalizedUrl = LivyManagedSessions.normalizeServerUrl(profile.livyServerUrl)
+            LivyAuthSessionStore.getInstance()
+                .status(profile.id, normalizedUrl)
+                .toDisplayText(normalizedUrl)
+        }
+    }
+
     private fun testSelectedProfile(verbose: Boolean) {
         val profile = buildCurrentProfileFromUi()
         val url = LivyManagedSessions.normalizeServerUrl(profile.livyServerUrl)
         LivyBackground.run(
             project = null,
             title = if (verbose) "Testing Livy connection (verbose)" else "Testing Livy connection",
-            action = { _ -> LivyClientProvider.getInstance().get(url).testConnectionDetailed() },
+            action = { _ -> LivyClientProvider.getInstance().get(profile).testConnectionDetailed() },
             onSuccessUi = { diagnostics ->
+                updateAuthStatus()
                 if (verbose) {
                     ResultDialog(diagnostics.toDiagnosticsText()).show()
                 } else if (diagnostics.success) {
                     Messages.showInfoMessage(diagnostics.summary(), "Livy")
+                } else if (diagnostics.authRequired) {
+                    val handled = maybePromptForBrowserAuthentication(
+                        failure = LivyAuthenticationRequiredException(
+                            httpCode = diagnostics.httpCode ?: 0,
+                            httpMessage = diagnostics.httpMessage.orEmpty(),
+                            responseHeaders = diagnostics.responseHeaders,
+                            responseBodyPreview = diagnostics.responseBodyPreview.orEmpty()
+                        ),
+                        profile = profile,
+                        parentComponent = mainPanel
+                    ) {
+                        testSelectedProfile(verbose = verbose)
+                    }
+                    if (!handled) {
+                        Messages.showErrorDialog(
+                            mainPanel,
+                            diagnostics.summary(),
+                            "Livy Error"
+                        )
+                    }
                 } else {
                     Messages.showErrorDialog(
                         mainPanel,
-                        diagnostics.summary() + "\nSupported scope: direct connectivity only; advanced auth flows are not implemented yet.",
+                        diagnostics.summary() + "\nIf this endpoint is behind SSO, use \"Authenticate via Browser…\" first.",
                         "Livy Error"
                     )
                 }
             },
             onErrorUi = { ex ->
+                if (
+                    maybePromptForBrowserAuthentication(
+                        failure = ex,
+                        profile = profile,
+                        parentComponent = mainPanel
+                    ) {
+                        testSelectedProfile(verbose = verbose)
+                    }
+                ) {
+                    updateAuthStatus()
+                    return@run
+                }
                 val text = if (ex is ProcessCanceledException) {
                     "Connection test was canceled."
                 } else {
@@ -473,7 +544,7 @@ class LivyPluginConfigurable : Configurable {
             title = "Creating Livy test session",
             action = { _ ->
                 val spec = LivySessionSpecFactory.fromSettings(profile, url)
-                val session = LivyClientProvider.getInstance().get(url).createSession(spec.config)
+                val session = LivyClientProvider.getInstance().get(profile).createSession(spec.config)
                 val sessionId = session.id ?: throw RuntimeException("Livy returned a session without id.")
                 LivyManagedSessions.remember(
                     state = LivyPluginSettings.getInstance().pluginState,
@@ -491,9 +562,34 @@ class LivyPluginConfigurable : Configurable {
                 )
             },
             onErrorUi = { ex ->
+                if (
+                    maybePromptForBrowserAuthentication(
+                        failure = ex,
+                        profile = profile,
+                        parentComponent = mainPanel
+                    ) {
+                        startTestSessionForSelectedProfile()
+                    }
+                ) {
+                    updateAuthStatus()
+                    return@run
+                }
                 Messages.showErrorDialog("Failed to create session: ${ex.message}", "Livy Error")
             }
         )
+    }
+
+    private fun authenticateSelectedProfile() {
+        val profile = buildCurrentProfileFromUi()
+        authenticateProfileInBrowser(profile, parentComponent = mainPanel)
+        updateAuthStatus()
+    }
+
+    private fun clearSelectedProfileAuth() {
+        val profile = buildCurrentProfileFromUi()
+        LivyAuthSessionStore.getInstance().clear(profile.id)
+        updateAuthStatus()
+        Messages.showInfoMessage(mainPanel, "Saved browser session was cleared for profile \"${profile.displayName}\".", "Livy Authentication")
     }
 
     private fun buildCurrentProfileFromUi(): LivyPluginSettings.ConnectionProfileState {

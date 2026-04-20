@@ -18,6 +18,7 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.OnePixelSplitter
@@ -77,6 +78,7 @@ class LivyConsolePanel(
 
     private val resultsTabbedPane = JBTabbedPane()
     private var statementCounter = 0
+    private val panelDisposable = Disposer.newDisposable("LivyConsolePanel")
 
     @Volatile
     private var isRunning = false
@@ -137,7 +139,7 @@ class LivyConsolePanel(
 
         add(progressBar, BorderLayout.NORTH)
         add(splitter, BorderLayout.CENTER)
-        codeDocument.addDocumentListener(draftListener)
+        codeDocument.addDocumentListener(draftListener, panelDisposable)
     }
 
     private inner class RunCurrentAction : DumbAwareAction("Run Current", "Run current selection or statement via Livy", AllIcons.Actions.Execute) {
@@ -213,7 +215,7 @@ class LivyConsolePanel(
             override fun run(indicator: ProgressIndicator) {
                 currentIndicator = indicator
                 try {
-                    val client = LivyClientProvider.getInstance().get(executionTarget.baseUrl)
+                    val client = LivyClientProvider.getInstance().get(executionTarget)
                     val sessionManager = SessionManager(client, executionTarget.settingsSnapshot)
 
                     val session = sessionManager.getSession(indicator)
@@ -255,6 +257,17 @@ class LivyConsolePanel(
 
             override fun onThrowable(error: Throwable) {
                 if (error is ProcessCanceledException || disposed) return
+                if (
+                    maybePromptForBrowserAuthentication(
+                        failure = error,
+                        profile = executionTarget.settingsSnapshot,
+                        project = project
+                    ) {
+                        executeCode(explicitCode = code)
+                    }
+                ) {
+                    return
+                }
                 LivyPluginSettings.getInstance().pluginState.recordConsoleHistory(
                     target = executionTarget,
                     snippet = code,
@@ -287,7 +300,7 @@ class LivyConsolePanel(
             title = "Cancelling Livy statement",
             action = { _ ->
                 LivyClientProvider.getInstance()
-                    .get(statementRef.baseUrl)
+                    .get(executionTarget)
                     .cancelStatement(statementRef.sessionId, statementRef.statementId)
             },
             onSuccessUi = {
@@ -300,6 +313,17 @@ class LivyConsolePanel(
                 }
             },
             onErrorUi = { error ->
+                if (
+                    maybePromptForBrowserAuthentication(
+                        failure = error,
+                        profile = executionTarget.settingsSnapshot,
+                        project = project
+                    ) {
+                        cancelStatement()
+                    }
+                ) {
+                    return@run
+                }
                 if (error !is ProcessCanceledException && !disposed) {
                     Messages.showErrorDialog(project, "Failed to cancel: ${error.message}", "Livy Error")
                 }
@@ -313,7 +337,7 @@ class LivyConsolePanel(
             return
         }
         SessionLogsDialog(
-            client = LivyClientProvider.getInstance().get(sessionRef.baseUrl),
+            client = LivyClientProvider.getInstance().get(executionTarget),
             sessionId = sessionRef.sessionId,
             project = project,
             serverUrl = sessionRef.baseUrl,
@@ -699,8 +723,9 @@ class LivyConsolePanel(
     }
 
     fun disposePanel() {
+        if (disposed) return
         disposed = true
-        codeDocument.removeDocumentListener(draftListener)
+        Disposer.dispose(panelDisposable)
         rememberCurrentDraft()
         currentIndicator?.cancel()
         currentIndicator = null

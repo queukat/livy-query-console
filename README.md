@@ -31,6 +31,7 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 - **Session logs dialog** with quick search (find next/prev)
 - **Statements browser** for a session with deeper statement details and "open in work file" reuse
 - **Multiple connection profiles** with per-profile Livy URL, session kind, resource settings, and managed-session options
+- **Browser sign-in for SSO-protected Livy** with per-profile session-cookie reuse via the IDE Password Safe
 
 ---
 
@@ -74,6 +75,7 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 4. Use the editor/project **Livy** popup group to open source in a work file or run the current selection/line/file directly
 5. In the work file, use **Run Current** for selection-or-statement execution and **Run File** for a full resend
 6. Reuse recent snippets from the work-file **History** action or let an empty work file restore the last local draft for that profile and execution kind
+7. If the server is behind SSO / oauth2-proxy, use **Settings → Tools → Livy → Authenticate via Browser…** or accept the sign-in prompt when the plugin detects an auth-required response
 
 ## Supported Boundary (Current Scope)
 
@@ -85,9 +87,10 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 - IDE-native entrypoints cover opening source in a Livy work file and running the current selection or line / whole file. This is still a lightweight execution workflow, not semantic Spark language tooling.
 - The work file is now **language-aware, not language-smart**: it reuses SQL/Python/plain-text editor support when the host IDE already has it, but it does not add its own parser, completion, inspections, or refactorings.
 - SQL work files support a narrow **semicolon-delimited current-statement heuristic** for `Run Current`. If that heuristic is ambiguous, the plugin falls back to running the whole work file.
-- Best fit today: direct or already JVM-trusted Livy HTTP(S) endpoints where plain connectivity is enough.
+- Best fit today: direct or SSO-protected Livy HTTP(S) endpoints where browser sign-in can establish a reusable session cookie.
 - Not stored by local history: auth material, credentials, cookies, headers, or full remote session state.
-- Not included (because not implemented yet): auth headers/tokens/cookies, Kerberos, OAuth, secure credential storage, SQL dialect intelligence, Python block analysis, or notebook cells.
+- Browser-based sign-in can now capture per-profile session cookies and store them in the IDE Password Safe for reuse by the Livy client.
+- Not included yet: manual auth headers/tokens, Kerberos, generic OAuth token management outside browser-session cookies, SQL dialect intelligence, Python block analysis, or notebook cells.
 
 ### Example: Scala / Spark
 ```scala
@@ -147,6 +150,19 @@ Recommended fixes:
 The resulting ZIP is usually in:
 `build/distributions/`
 
+### Publish to JetBrains Marketplace locally
+Standard publish command:
+```powershell
+.\gradlew publishPlugin
+```
+
+Safer release-grade publish in one go:
+```powershell
+.\gradlew test buildPlugin verifyPlugin publishPlugin
+```
+
+The Gradle publish task accepts either `ORG_GRADLE_PROJECT_intellijPlatformPublishingToken` or `PUBLISH_TOKEN`.
+
 On Windows local builds, searchable-options generation is skipped because the upstream IDE task is currently reproducibly failing with a mapped-file error on this project baseline.
 Linux CI/release builds still run the full searchable-options path.
 
@@ -171,14 +187,14 @@ Generated PNG files are written to:
 - **CI**: `.github/workflows/ci.yml`
   - Runs on push/PR
   - Validates wrapper, runs tests, builds plugin ZIP artifact, runs `verifyPlugin`
-- **GitHub Release**: `.github/workflows/release.yml`
-  - Runs on tag push `v*`
-  - Re-runs tests/build/`verifyPlugin`, then attaches ZIP to GitHub Release automatically
 - **Marketplace publish (manual)**: `.github/workflows/publish-marketplace.yml`
   - Run manually from GitHub Actions UI
   - Re-runs tests/build/`verifyPlugin` before `publishPlugin`
-  - Requires repository secret: `PUBLISH_TOKEN`
+  - Accepts repository secret: `ORG_GRADLE_PROJECT_intellijPlatformPublishingToken` or `PUBLISH_TOKEN`
   - Optional signing secrets (if used): `CERTIFICATE_CHAIN`, `PRIVATE_KEY`, `PRIVATE_KEY_PASSWORD`
+- **Local publish (recommended if you do not use GitHub Releases)**: `.\gradlew publishPlugin`
+  - Uses `ORG_GRADLE_PROJECT_intellijPlatformPublishingToken` or `PUBLISH_TOKEN`
+  - For a release-grade local push, prefer `.\gradlew test buildPlugin verifyPlugin publishPlugin`
 
 ---
 

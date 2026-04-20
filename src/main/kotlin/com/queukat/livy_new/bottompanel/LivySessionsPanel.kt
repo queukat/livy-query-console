@@ -15,6 +15,7 @@ import com.queukat.livy_new.LivyPluginSettings
 import com.queukat.livy_new.Session
 import com.queukat.livy_new.SessionLogsDialog
 import com.queukat.livy_new.ShowStatementsDialog
+import com.queukat.livy_new.maybePromptForBrowserAuthentication
 import com.queukat.livy_new.normalizeSessionsAutoRefreshIntervalSeconds
 import com.queukat.livy_new.profileChoices
 import com.queukat.livy_new.profileLabel
@@ -37,8 +38,8 @@ import javax.swing.table.DefaultTableModel
 class LivySessionsPanel(
     private val project: Project,
     private val autoRefresh: Boolean = true,
-    private val sessionLoader: (String) -> List<Session> = { serverUrl ->
-        LivyClientProvider.getInstance().get(serverUrl).getAllSessions()
+    private val sessionLoader: (LivyExecutionTarget) -> List<Session> = { target ->
+        LivyClientProvider.getInstance().get(target).getAllSessions()
     }
 ) : JPanel(BorderLayout()) {
 
@@ -221,7 +222,7 @@ class LivySessionsPanel(
             project = project,
             title = "Refreshing Livy sessions",
             action = { _ ->
-                LoadedSessions(target = target, sessions = sessionLoader(target.baseUrl))
+                LoadedSessions(target = target, sessions = sessionLoader(target))
             },
             onSuccessUi = { loaded ->
                 replaceSessions(loaded.sessions, loaded.target)
@@ -230,6 +231,17 @@ class LivySessionsPanel(
                 refreshInProgress = false
                 contextLabel.text = "Failed to load sessions from ${target.profileName} (${target.baseUrl})."
                 updateActionButtons()
+                if (
+                    maybePromptForBrowserAuthentication(
+                        failure = e,
+                        profile = target.settingsSnapshot,
+                        project = project
+                    ) {
+                        refreshSessions(showModalErrors = showModalErrors)
+                    }
+                ) {
+                    return@run
+                }
                 if (showModalErrors) {
                     Messages.showErrorDialog(
                         project,
@@ -302,7 +314,7 @@ class LivySessionsPanel(
             return
         }
         ShowStatementsDialog(
-            client = LivyClientProvider.getInstance().get(target.baseUrl),
+            client = LivyClientProvider.getInstance().get(target),
             sessionId = sessionId,
             project = project,
             executionTarget = target
@@ -325,7 +337,7 @@ class LivySessionsPanel(
             return
         }
         SessionLogsDialog(
-            client = LivyClientProvider.getInstance().get(target.baseUrl),
+            client = LivyClientProvider.getInstance().get(target),
             sessionId = sessionId,
             project = project,
             serverUrl = target.baseUrl,
@@ -368,13 +380,24 @@ class LivySessionsPanel(
             project = project,
             title = "Terminating Livy session",
             action = { _ ->
-                LivyClientProvider.getInstance().get(target.baseUrl).deleteSession(sessionId)
+                LivyClientProvider.getInstance().get(target).deleteSession(sessionId)
             },
             onSuccessUi = {
                 LivyManagedSessions.forget(settings, sessionId, target.baseUrl)
                 replaceSessions(rowSessions.filter { it.id != sessionId }, target)
             },
             onErrorUi = { error ->
+                if (
+                    maybePromptForBrowserAuthentication(
+                        failure = error,
+                        profile = target.settingsSnapshot,
+                        project = project
+                    ) {
+                        terminateSelectedManagedSession()
+                    }
+                ) {
+                    return@run
+                }
                 Messages.showErrorDialog(
                     project,
                     "Failed to terminate session #$sessionId: ${error.message}",
