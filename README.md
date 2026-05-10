@@ -1,5 +1,9 @@
 # Livy Query Console (JetBrains Plugin)
 
+<!-- public-repo-status -->
+> Status: Active early-release JetBrains Marketplace plugin. Issues are open for reproducible bugs and focused feature requests.
+
+
 Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apache Livy** right from JetBrains IDE.
 
 > This plugin is an early public release. Feedback and PRs are welcome.
