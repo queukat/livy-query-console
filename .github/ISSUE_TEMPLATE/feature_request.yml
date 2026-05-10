@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a focused improvement for the JetBrains plugin.
+title: "[Feature]: "
+labels: ["enhancement", "jetbrains"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What are you trying to do in the IDE?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior change.
+    validations:
+      required: true
+  - type: input
+    id: ide
+    attributes:
+      label: Target IDE/version
+      placeholder: "IntelliJ IDEA / PyCharm / DataGrip 2024.1.x"
