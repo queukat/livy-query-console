@@ -5,6 +5,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
+import com.intellij.credentialStore.generateServiceName
 import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.ui.jcef.JBCefCookie
 import okhttp3.Cookie
@@ -168,7 +169,28 @@ class LivyAuthSessionStore {
     }
 
     private fun credentialsFor(profileId: String): CredentialAttributes =
-        CredentialAttributes(AUTH_SERVICE_NAME, profileId, LivyAuthSessionStore::class.java)
+        createCredentialAttributes(generateServiceName(AUTH_SERVICE_NAME, profileId))
+
+    private fun createCredentialAttributes(serviceName: String): CredentialAttributes {
+        val attributeClass = CredentialAttributes::class.java
+        val booleanType = java.lang.Boolean.TYPE
+
+        val currentConstructor = runCatching {
+            attributeClass.getConstructor(String::class.java, String::class.java, booleanType, booleanType)
+        }.getOrNull()
+        if (currentConstructor != null) {
+            return currentConstructor.newInstance(serviceName, null, false, true) as CredentialAttributes
+        }
+
+        val legacyConstructor = attributeClass.getConstructor(
+            String::class.java,
+            String::class.java,
+            Class::class.java,
+            booleanType,
+            booleanType
+        )
+        return legacyConstructor.newInstance(serviceName, null, null, false, true) as CredentialAttributes
+    }
 
     companion object {
         private const val AUTH_SERVICE_NAME = "Livy Query Console Browser Auth"

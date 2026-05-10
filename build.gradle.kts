@@ -10,10 +10,11 @@ plugins {
 }
 
 val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
-val basePluginVersion = "1.5.3"
+val basePluginVersion = "1.5.4"
 val pluginVersionSuffix = providers.gradleProperty("pluginVersionSuffix").orNull?.trim().orEmpty()
 val marketplacePublishingToken = providers.gradleProperty("intellijPlatformPublishingToken")
     .orElse(providers.environmentVariable("ORG_GRADLE_PROJECT_intellijPlatformPublishingToken"))
+    .orElse(providers.environmentVariable("PUBLISH_TOKEN_PLUGIN"))
     .orElse(providers.environmentVariable("PUBLISH_TOKEN"))
 
 
@@ -102,6 +103,15 @@ tasks {
     }
 
     runPluginVerifier {
+        ideVersions.set(listOf("IU-261.23567.138"))
+        failureLevel.set(
+            listOf(
+                org.jetbrains.intellij.tasks.RunPluginVerifierTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+                org.jetbrains.intellij.tasks.RunPluginVerifierTask.FailureLevel.DEPRECATED_API_USAGES,
+                org.jetbrains.intellij.tasks.RunPluginVerifierTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES,
+                org.jetbrains.intellij.tasks.RunPluginVerifierTask.FailureLevel.NOT_DYNAMIC
+            )
+        )
         downloadDir.set(
             layout.buildDirectory.dir("pluginVerifier/downloads").map { it.asFile.absolutePath }
         )

@@ -1,4 +1,4 @@
-<idea-plugin>
+<idea-plugin require-restart="false">
     <id>com.queukat.livy-new</id>
     <name>Livy Query Console</name>
     <vendor email="queukat@gmail.com" url="https://github.com/queukat">queukat</vendor>
@@ -30,18 +30,27 @@
       </ul>
     </li>
     <li>
-      <b>Session logs</b>: view Livy session logs in a separate dialog to diagnose cluster/session issues.
+      <b>Session logs</b>: view Livy session logs in a separate dialog with refresh, copy, and quick find next/previous.
     </li>
     <li>
-      <b>Statements browser</b>: list recent statements in a session and inspect their state and output status.
+      <b>Statements browser</b>: list recent statements in a session, inspect deeper details, copy code,
+      and reopen statement code in a bound Livy work file.
     </li>
     <li>
-      <b>Tool Window</b>: a “Livy Sessions” tool window that shows active sessions and provides quick actions
-      (refresh, logs, statements).
+      <b>Tool Window</b>: a “Livy Sessions” tool window that shows active sessions with refresh/auto-refresh,
+      configurable columns, logs/statements actions, and termination for plugin-managed sessions.
     </li>
     <li>
       <b>Connection profiles</b>: keep multiple named Livy targets with per-profile session kind, resource parameters,
-      and session management strategy.
+      verbose connection diagnostics, and session management strategy.
+    </li>
+    <li>
+      <b>Managed sessions</b>: reuse compatible plugin-managed sessions, cap managed session count per profile,
+      and optionally clean up the oldest idle managed session when the limit is reached.
+    </li>
+    <li>
+      <b>Browser-based authentication</b>: for SSO/OAuth2-proxy protected Livy endpoints, open an embedded browser login,
+      capture per-profile session cookies, store them in the IDE Password Safe, and prompt to sign in when API calls look authentication-gated.
     </li>
     <li>
       <b>Local history</b>: recent snippets and the last draft per profile can be restored locally for quick rerun/reuse.
@@ -53,6 +62,7 @@
   <ol>
     <li>Open <b>Livy: Open Work File</b> (Tools → Livy) or use the <b>Livy</b> editor/project popup actions.</li>
     <li>Choose the connection profile to bind the work file or run action to.</li>
+    <li>If the endpoint is behind SSO/OAuth2 proxy, use <b>Authenticate via Browser…</b> in Settings → Tools → Livy or follow the sign-in prompt.</li>
     <li>Route a selection/current line/whole file into Livy, or use <b>Run Current</b> / <b>Run File</b> inside the work file.</li>
     <li>Inspect results, logs, and statements, then iterate.</li>
   </ol>
@@ -64,30 +74,26 @@
   </p>
 
   <p>
-    <b>Current scope:</b> the plugin supports multiple named connection profiles for direct Livy HTTP(S) connectivity.
+    <b>Current scope:</b> the plugin supports multiple named connection profiles for direct Livy HTTP(S) connectivity
+    and SSO/OAuth2-proxy flows that can be satisfied by reusable browser-session cookies.
     Existing work files and loaded session views stay bound to the profile snapshot they were opened with.
     Optional local history stores recent snippets and the last draft per profile in plain text on the local machine only.
     SQL work files support a narrow semicolon-delimited current-statement heuristic; PySpark/plain Spark work files stay on selection-or-file execution semantics.
     This is a lightweight execution workflow, not notebook persistence or semantic Spark language tooling.
-    For SSO-protected endpoints, the plugin can open an embedded browser, capture per-profile session cookies, and store them in the IDE Password Safe for reuse.
+    Browser sign-in requires an IDE runtime with embedded browser support and stores captured per-profile session cookies in the IDE Password Safe.
     Manual auth headers/tokens, Kerberos, and generic OAuth token management outside browser-session cookies are still not implemented.
   </p>
 ]]></description>
 
 
     <change-notes><![CDATA[
-  <h3>What's new in 1.5.3</h3>
+  <h3>What's new in 1.5.4</h3>
   <ul>
     <li>
-      <b>Marketplace compatibility fix for 2023.3</b>: removed the JCEF cookie-manager method call that was binary-incompatible with IntelliJ IDEA 2023.3,
-      so the browser sign-in flow no longer trips Plugin Verifier on `IU-233`.
+      <b>Verifier compatibility cleanup</b>: removed deprecated JCEF cookie-manager and Password Safe constructor usages reported by Marketplace verification.
     </li>
     <li>
-      <b>Same SSO workflow, safer implementation</b>: browser-auth still captures the active login session for protected Livy endpoints,
-      but now does it using a cross-version cookie lookup path that is friendlier to older IDE baselines.
-    </li>
-    <li>
-      <b>Patch release only</b>: this update is focused on verifier/runtime compatibility for the new auth flow and does not change the broader Livy profile workflow.
+      <b>Dynamic plugin metadata</b>: explicitly declares that the plugin does not require an IDE restart, matching the dynamic-plugin eligibility reported by Plugin Verifier.
     </li>
   </ul>
 ]]></change-notes>

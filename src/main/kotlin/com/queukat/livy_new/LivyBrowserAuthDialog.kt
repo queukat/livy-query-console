@@ -7,8 +7,12 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.ui.jcef.JBCefCookie
+import com.intellij.ui.jcef.JBCefCookieManager
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.cef.handler.CefLoadHandlerAdapter
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import javax.swing.Action
 import javax.swing.JComponent
 import javax.swing.JLabel
@@ -29,7 +33,7 @@ class LivyBrowserAuthDialog(
         }
     )
     private var browser: JBCefBrowser? = if (supported) JBCefBrowser(targetUrl) else null
-    private var capturedCookies: List<com.intellij.ui.jcef.JBCefCookie> = emptyList()
+    private var capturedCookies: List<JBCefCookie> = emptyList()
 
     init {
         title = "Authenticate ${profile.displayName.ifBlank { "Livy Profile" }}"
@@ -39,7 +43,7 @@ class LivyBrowserAuthDialog(
         init()
     }
 
-    fun capturedCookies(): List<com.intellij.ui.jcef.JBCefCookie> = capturedCookies
+    fun capturedCookies(): List<JBCefCookie> = capturedCookies
 
     override fun createCenterPanel(): JComponent {
         val browserComponent = browser?.component
@@ -70,7 +74,7 @@ class LivyBrowserAuthDialog(
         object : DialogWrapperAction("Reset Browser Cookies") {
             override fun doAction(e: java.awt.event.ActionEvent?) {
                 val manager = browser?.getJBCefCookieManager() ?: return
-                manager.deleteCookies(targetUrl, true)
+                manager.deleteCookies(targetUrl, null)
                 browser?.loadURL(targetUrl)
                 currentPageLabel.text = "Current page: $targetUrl"
             }
@@ -86,8 +90,7 @@ class LivyBrowserAuthDialog(
         }
         val cookies = browser
             ?.getJBCefCookieManager()
-            ?.getCookies()
-            ?.filter { cookieMatchesTarget(it) }
+            ?.readCookiesForTarget()
             .orEmpty()
         if (cookies.isEmpty()) {
             Messages.showErrorDialog(
@@ -137,9 +140,30 @@ class LivyBrowserAuthDialog(
                 )
     }
 
-    private fun cookieMatchesTarget(cookie: com.intellij.ui.jcef.JBCefCookie): Boolean {
+    private fun JBCefCookieManager.readCookiesForTarget(): List<JBCefCookie> {
+        val future = getCookies(targetUrl, true)
+        return try {
+            future.get(COOKIE_ACCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .filter { cookieMatchesTarget(it) }
+        } catch (_: TimeoutException) {
+            future.cancel(true)
+            emptyList()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            future.cancel(true)
+            emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun cookieMatchesTarget(cookie: JBCefCookie): Boolean {
         val httpUrl = targetUrl.toHttpUrlOrNull() ?: return true
         val okHttpCookie = cookie.toStoredCookieOrNull()?.toOkHttpCookieOrNull() ?: return false
         return okHttpCookie.matches(httpUrl)
+    }
+
+    companion object {
+        private const val COOKIE_ACCESS_TIMEOUT_MS = 1_000L
     }
 }

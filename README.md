@@ -23,15 +23,17 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
   - **Table**: renders Spark ASCII tables (e.g. output of `df.show()`) when detected
 - **Tool Window: “Livy Sessions”**
   - List active sessions
-  - Refresh
+  - Refresh manually or enable auto-refresh
+  - Choose visible session columns
   - Open **Statements** and **Logs** dialogs for the selected session
+  - Terminate plugin-managed sessions only
 - **Local work-file history & last-draft restore**
   - Recent snippets are stored locally per profile with bounded retention
   - Reuse, replace, rerun, or copy a recent snippet from the work-file history dialog
 - **Session logs dialog** with quick search (find next/prev)
 - **Statements browser** for a session with deeper statement details and "open in work file" reuse
 - **Multiple connection profiles** with per-profile Livy URL, session kind, resource settings, and managed-session options
-- **Browser sign-in for SSO-protected Livy** with per-profile session-cookie reuse via the IDE Password Safe
+- **Browser sign-in for SSO/OAuth2-proxy protected Livy** with per-profile session-cookie reuse via the IDE Password Safe and auth-required prompts
 
 ---
 
@@ -161,7 +163,8 @@ Safer release-grade publish in one go:
 .\gradlew test buildPlugin verifyPlugin publishPlugin
 ```
 
-The Gradle publish task accepts either `ORG_GRADLE_PROJECT_intellijPlatformPublishingToken` or `PUBLISH_TOKEN`.
+The Gradle publish task reads the Marketplace token from the standard Gradle property/env used by this project
+(`ORG_GRADLE_PROJECT_intellijPlatformPublishingToken` or `PUBLISH_TOKEN` for local publishing).
 
 On Windows local builds, searchable-options generation is skipped because the upstream IDE task is currently reproducibly failing with a mapped-file error on this project baseline.
 Linux CI/release builds still run the full searchable-options path.
