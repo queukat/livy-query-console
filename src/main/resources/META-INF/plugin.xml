@@ -87,13 +87,16 @@
 
 
     <change-notes><![CDATA[
-  <h3>What's new in 1.5.4</h3>
+  <h3>What's new in 1.5.5</h3>
   <ul>
     <li>
-      <b>Verifier compatibility cleanup</b>: removed deprecated JCEF cookie-manager and Password Safe constructor usages reported by Marketplace verification.
+      <b>Livy Sessions profile controls</b>: added direct profile creation, profile-list refresh, and a shortcut to Livy profile settings from the Sessions tool window.
     </li>
     <li>
-      <b>Dynamic plugin metadata</b>: explicitly declares that the plugin does not require an IDE restart, matching the dynamic-plugin eligibility reported by Plugin Verifier.
+      <b>Fresh profile selection</b>: the Sessions profile selector now reloads after settings changes, when the panel is shown, and when the combo box is opened.
+    </li>
+    <li>
+      <b>Quality and release hardening</b>: added Sonar/Jacoco wiring, dependency verification metadata, and focused coverage for Livy client, settings migration, models, auth helpers, and work-file routing.
     </li>
   </ul>
 ]]></change-notes>
