@@ -2,7 +2,6 @@
 
 <!-- public-repo-status -->
 > Status: Active early-release JetBrains Marketplace plugin. Issues are open for reproducible bugs and focused feature requests.
-> Quality: SonarQube Quality Gate OK as of 2026-05-16; overall coverage 81.0%, duplicated lines 0.0%, bugs/vulnerabilities/code smells 0.
 
 Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apache Livy** right from JetBrains IDE.
 
@@ -11,7 +10,28 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 [![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 [![Rating](https://img.shields.io/jetbrains/plugin/r/stars/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
-![SonarQube](https://img.shields.io/badge/SonarQube-Quality%20Gate%20OK-brightgreen)
+![SonarQube Quality Gate](https://img.shields.io/badge/SonarQube-Quality%20Gate%20OK-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-81.0%25-brightgreen)
+![Issues](https://img.shields.io/badge/Issues-0-brightgreen)
+![Duplications](https://img.shields.io/badge/Duplications-0.0%25-brightgreen)
+
+<details>
+<summary><strong>SonarQube quality snapshot</strong> (checked 2026-05-16)</summary>
+
+| Metric | Value |
+| --- | --- |
+| Quality Gate | OK |
+| Overall coverage | 81.0% |
+| New-code coverage | 100.0% (gate threshold: 80%) |
+| Overall duplicated lines | 0.0% |
+| New-code duplicated lines | 0.0% (gate threshold: 3%) |
+| Bugs | 0 |
+| Vulnerabilities | 0 |
+| Code smells | 0 |
+| New violations | 0 |
+
+These values are a checked SonarQube API snapshot, not live badges.
+</details>
 
 ---
 
