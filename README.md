@@ -2,6 +2,7 @@
 
 <!-- public-repo-status -->
 > Status: Active early-release JetBrains Marketplace plugin. Issues are open for reproducible bugs and focused feature requests.
+> Quality: SonarQube Quality Gate OK as of 2026-05-16; overall coverage 81.0%, duplicated lines 0.0%, bugs/vulnerabilities/code smells 0.
 
 Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apache Livy** right from JetBrains IDE.
 
@@ -10,6 +11,7 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 [![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 [![Rating](https://img.shields.io/jetbrains/plugin/r/stars/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
+![SonarQube](https://img.shields.io/badge/SonarQube-Quality%20Gate%20OK-brightgreen)
 
 ---
 
