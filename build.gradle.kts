@@ -14,6 +14,9 @@ plugins {
 }
 
 val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+val livyBuildSearchableOptions = providers.gradleProperty("livyBuildSearchableOptions")
+    .map(String::toBoolean)
+    .getOrElse(false)
 val basePluginVersion = "1.5.5"
 val pluginVersionSuffix = providers.gradleProperty("pluginVersionSuffix").orNull?.trim().orEmpty()
 val marketplacePublishingToken = providers.gradleProperty("intellijPlatformPublishingToken")
@@ -117,11 +120,11 @@ tasks {
     }
 
     named<org.jetbrains.intellij.tasks.BuildSearchableOptionsTask>("buildSearchableOptions") {
-        enabled = !isWindowsHost
+        enabled = livyBuildSearchableOptions && !isWindowsHost
     }
 
     named<org.jetbrains.intellij.tasks.JarSearchableOptionsTask>("jarSearchableOptions") {
-        enabled = !isWindowsHost
+        enabled = livyBuildSearchableOptions && !isWindowsHost
     }
 
     val testSourceSet = the<SourceSetContainer>()["test"]

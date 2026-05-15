@@ -169,8 +169,28 @@ Safer release-grade publish in one go:
 The Gradle publish task reads the Marketplace token from the standard Gradle property/env used by this project
 (`ORG_GRADLE_PROJECT_intellijPlatformPublishingToken` or `PUBLISH_TOKEN` for local publishing).
 
-On Windows local builds, searchable-options generation is skipped because the upstream IDE task is currently reproducibly failing with a mapped-file error on this project baseline.
-Linux CI/release builds still run the full searchable-options path.
+Searchable-options generation is skipped by default because it pulls platform-specific JetBrains Runtime artifacts and is fragile under dependency verification.
+If you intentionally need to rebuild searchable options on a non-Windows host, run the build with `-PlivyBuildSearchableOptions=true`.
+
+### Correct already-published Marketplace notes
+Marketplace release notes are immutable for an uploaded version. If the ZIP was good but `change-notes` were wrong, use the same version only by deleting the Marketplace update first and uploading the corrected ZIP again:
+```powershell
+$token = $env:ORG_GRADLE_PROJECT_intellijPlatformPublishingToken
+if (-not $token) { $token = $env:PUBLISH_TOKEN_PLUGIN }
+if (-not $token) { $token = $env:PUBLISH_TOKEN }
+$headers = @{ Authorization = "Bearer $token" }
+$version = "1.5.5"
+
+$updates = Invoke-RestMethod -Headers $headers -Uri "https://plugins.jetbrains.com/api/plugins/updates?xmlId=com.queukat.livy-new&version=$version&family=intellij"
+$updates | Select-Object id,version,channel,pluginId,hidden
+
+.\gradlew buildPlugin verifyPlugin --no-configuration-cache --stacktrace
+Invoke-RestMethod -Method Delete -Headers $headers -Uri "https://plugins.jetbrains.com/api/updates/$($updates.id)"
+.\gradlew publishPlugin --no-configuration-cache --stacktrace
+
+Invoke-RestMethod -Headers $headers -Uri "https://plugins.jetbrains.com/api/plugins/updates?xmlId=com.queukat.livy-new&version=$version&family=intellij" |
+  Select-Object id,version,channel,pluginId,hidden,notes
+```
 
 ### Useful Gradle tasks
 - `verifyPlugin`
