@@ -10,13 +10,13 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 [![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
 [![Rating](https://img.shields.io/jetbrains/plugin/r/stars/29406)](https://plugins.jetbrains.com/plugin/29406-livy-query-console)
-![SonarQube Quality Gate](https://img.shields.io/badge/SonarQube-Quality%20Gate%20OK-brightgreen)
+![Local SonarQube Quality Gate](https://img.shields.io/badge/Local%20SonarQube-Quality%20Gate%20OK-brightgreen)
 ![Coverage](https://img.shields.io/badge/Coverage-81.0%25-brightgreen)
 ![Issues](https://img.shields.io/badge/Issues-0-brightgreen)
 ![Duplications](https://img.shields.io/badge/Duplications-0.0%25-brightgreen)
 
 <details>
-<summary><strong>SonarQube quality snapshot</strong> (checked 2026-05-16)</summary>
+<summary><strong>Local SonarQube quality snapshot</strong> (checked 2026-05-16)</summary>
 
 | Metric | Value |
 | --- | --- |
@@ -30,7 +30,7 @@ Run **Spark**, **PySpark**, and **Spark SQL** code on a remote cluster via **Apa
 | Code smells | 0 |
 | New violations | 0 |
 
-These values are a checked SonarQube API snapshot, not live badges.
+These values are a checked local SonarQube API snapshot, not live cloud badges.
 </details>
 
 ---
