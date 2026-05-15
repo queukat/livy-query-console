@@ -3,6 +3,9 @@
    <configuration>
       <verify-metadata>true</verify-metadata>
       <verify-signatures>false</verify-signatures>
+      <trusted-artifacts>
+         <trust group="com.jetbrains" name="ideaIC" version="2023.1.5" file="ivy-2023.1.5.xml" reason="The IntelliJ Gradle Plugin generates an OS-specific Ivy descriptor; IDE binary artifacts remain checksum-verified."/>
+      </trusted-artifacts>
    </configuration>
    <components>
       <component group="com.fasterxml" name="oss-parent" version="48">
