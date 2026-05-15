@@ -1,5 +1,7 @@
 package com.queukat.livy_new
 
+import com.google.gson.annotations.SerializedName
+
 /**
  * Более терпимые модели (nullable + дефолты), чтобы не падать на различиях версий Livy.
  */
@@ -53,7 +55,8 @@ data class Statement(
  */
 data class StatementOutput(
     val status: String? = null,
-    val execution_count: Int? = null,
+    @SerializedName("execution_count")
+    val executionCount: Int? = null,
     val data: Map<String, Any?>? = null,
 
     // error details (при status="error")

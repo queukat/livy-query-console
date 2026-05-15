@@ -42,14 +42,24 @@ class LivyConsoleFileEditor(
     }
     override fun getFile(): VirtualFile = myFile
 
-    override fun setState(state: FileEditorState) {}
+    override fun setState(state: FileEditorState) {
+        // The editor state is derived from the bound virtual file and does not need restoration.
+    }
     override fun getState(level: FileEditorStateLevel): FileEditorState = SimpleEditorState()
     override fun isModified(): Boolean = FileDocumentManager.getInstance().isFileModified(myFile)
     override fun isValid(): Boolean = true
-    override fun selectNotify() {}
-    override fun deselectNotify() {}
-    override fun addPropertyChangeListener(listener: PropertyChangeListener) {}
-    override fun removePropertyChangeListener(listener: PropertyChangeListener) {}
+    override fun selectNotify() {
+        // No selection-specific resources are acquired by this editor.
+    }
+    override fun deselectNotify() {
+        // No selection-specific resources are retained by this editor.
+    }
+    override fun addPropertyChangeListener(listener: PropertyChangeListener) {
+        // This editor does not publish property changes.
+    }
+    override fun removePropertyChangeListener(listener: PropertyChangeListener) {
+        // This editor does not publish property changes.
+    }
     override fun getCurrentLocation(): FileEditorLocation? = null
     fun applyWorkSurfaceRequest(request: LivyWorkSurfaceRequest) {
         consolePanel.applyWorkSurfaceRequest(request)

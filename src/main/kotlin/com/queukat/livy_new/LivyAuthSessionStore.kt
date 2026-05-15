@@ -113,7 +113,7 @@ class LivyAuthSessionStore {
     fun clear(profileId: String) {
         if (profileId.isBlank()) return
         sessionCache.remove(profileId)
-        PasswordSafe.instance.set(credentialsFor(profileId), null)
+        PasswordSafe.instance[credentialsFor(profileId)] = null
     }
 
     private fun loadSession(
@@ -134,8 +134,7 @@ class LivyAuthSessionStore {
             return normalized
         }
 
-        val raw = PasswordSafe.instance
-            .get(credentialsFor(profileId))
+        val raw = PasswordSafe.instance[credentialsFor(profileId)]
             ?.getPasswordAsString()
             .orEmpty()
             .trim()
@@ -162,10 +161,7 @@ class LivyAuthSessionStore {
             return
         }
         sessionCache[profileId] = normalized
-        PasswordSafe.instance.set(
-            credentialsFor(profileId),
-            Credentials(profileId, gson.toJson(normalized))
-        )
+        PasswordSafe.instance[credentialsFor(profileId)] = Credentials(profileId, gson.toJson(normalized))
     }
 
     private fun credentialsFor(profileId: String): CredentialAttributes =

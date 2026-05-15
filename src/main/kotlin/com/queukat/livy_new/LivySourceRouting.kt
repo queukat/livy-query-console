@@ -28,7 +28,6 @@ data class LivySourceOrigin(
         when {
             lineStart != null && lineEnd != null && lineStart == lineEnd -> append(":$lineStart")
             lineStart != null && lineEnd != null -> append(":$lineStart-$lineEnd")
-            else -> {}
         }
         append(" (${modeLabel(mode)})")
     }
@@ -196,27 +195,30 @@ private fun splitSqlStatements(text: String): List<SqlStatementRange> {
     val statements = mutableListOf<SqlStatementRange>()
     var rawStart = 0
 
-    fun addStatement(rawEndExclusive: Int) {
-        var contentStart = rawStart
-        while (contentStart < rawEndExclusive && text[contentStart].isWhitespace()) {
-            contentStart++
-        }
-        var contentEndExclusive = rawEndExclusive
-        while (contentEndExclusive > contentStart && text[contentEndExclusive - 1].isWhitespace()) {
-            contentEndExclusive--
-        }
-        if (contentEndExclusive > contentStart) {
-            statements += SqlStatementRange(rawStart, rawEndExclusive, contentStart, contentEndExclusive)
-        }
-    }
-
     text.forEachIndexed { index, char ->
         if (char == ';') {
-            addStatement(index)
+            createSqlStatementRange(text, rawStart, index)?.let(statements::add)
             rawStart = index + 1
         }
     }
-    addStatement(text.length)
+    createSqlStatementRange(text, rawStart, text.length)?.let(statements::add)
 
     return statements
+}
+
+private fun createSqlStatementRange(
+    text: String,
+    rawStart: Int,
+    rawEndExclusive: Int
+): SqlStatementRange? {
+    var contentStart = rawStart
+    while (contentStart < rawEndExclusive && text[contentStart].isWhitespace()) {
+        contentStart++
+    }
+    var contentEndExclusive = rawEndExclusive
+    while (contentEndExclusive > contentStart && text[contentEndExclusive - 1].isWhitespace()) {
+        contentEndExclusive--
+    }
+    if (contentEndExclusive <= contentStart) return null
+    return SqlStatementRange(rawStart, rawEndExclusive, contentStart, contentEndExclusive)
 }

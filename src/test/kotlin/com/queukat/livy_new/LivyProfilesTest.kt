@@ -3,6 +3,7 @@ package com.queukat.livy_new
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LivyProfilesTest {
@@ -109,5 +110,138 @@ class LivyProfilesTest {
         val options = buildLivyProfileSelectionOptions(state)
 
         assertEquals(0, options.defaultIndex)
+    }
+
+    @Test
+    fun loadState_normalizes_profiles_sessions_history_drafts_and_panel_defaults() {
+        val duplicateId = "duplicate-id"
+        val rawProfileA = LivyPluginSettings.ConnectionProfileState().apply {
+            id = duplicateId
+            displayName = "  "
+            livyServerUrl = ""
+        }
+        val rawProfileB = LivyPluginSettings.ConnectionProfileState().apply {
+            id = duplicateId
+            displayName = " Analytics "
+            livyServerUrl = "http://livy-b/"
+        }
+        val state = LivyPluginSettings.PluginState().apply {
+            profiles = mutableListOf(rawProfileA, rawProfileB)
+            activeProfileId = "missing"
+            defaultProfileId = "missing"
+            maxHistoryItems = 1_000
+            sessionTableColumns = mutableListOf()
+            sessionsAutoRefreshIntervalSeconds = 1
+            managedSessions = mutableListOf(
+                LivyPluginSettings.ManagedSessionState().apply {
+                    sessionId = 1
+                    serverUrl = "http://livy-b"
+                    fingerprint = "abc"
+                    createdAtMs = 10L
+                },
+                LivyPluginSettings.ManagedSessionState().apply {
+                    sessionId = 1
+                    serverUrl = "http://livy-b"
+                    fingerprint = "duplicate"
+                    createdAtMs = 11L
+                },
+                LivyPluginSettings.ManagedSessionState().apply {
+                    sessionId = -1
+                    serverUrl = "http://livy-b"
+                    fingerprint = "bad"
+                }
+            )
+            consoleHistory = mutableListOf(
+                LivyPluginSettings.ConsoleHistoryEntryState().apply {
+                    id = ""
+                    createdAtMs = -5L
+                    profileId = duplicateId
+                    profileName = " Analytics "
+                    baseUrl = ""
+                    languageOrKind = " SQL "
+                    snippet = "select 1"
+                    status = ""
+                },
+                LivyPluginSettings.ConsoleHistoryEntryState().apply {
+                    profileId = duplicateId
+                    snippet = ""
+                }
+            )
+            consoleDrafts = mutableListOf(
+                LivyPluginSettings.ConsoleDraftState().apply {
+                    profileId = duplicateId
+                    languageOrKind = " SQL "
+                    text = "old"
+                    updatedAtMs = 1L
+                },
+                LivyPluginSettings.ConsoleDraftState().apply {
+                    profileId = duplicateId
+                    languageOrKind = "sql"
+                    text = "new"
+                    updatedAtMs = 2L
+                },
+                LivyPluginSettings.ConsoleDraftState().apply {
+                    profileId = "unknown"
+                    text = "ignored"
+                }
+            )
+        }
+        val settings = LivyPluginSettings()
+
+        settings.loadState(state)
+
+        val normalized = settings.pluginState
+        assertEquals(listOf("id", "appId", "owner", "kind", "state", "log"), normalized.sessionTableColumns)
+        assertEquals(LivyPluginSettings.MIN_SESSIONS_AUTO_REFRESH_INTERVAL_SECONDS, normalized.sessionsAutoRefreshIntervalSeconds)
+        assertEquals(1, normalized.managedSessions.size)
+        assertEquals(2, normalized.profiles.size)
+        assertNotEquals(normalized.profiles[0].id, normalized.profiles[1].id)
+        assertEquals("Default Profile", normalized.profiles[0].displayName)
+        assertEquals(LivyPluginSettings.DEFAULT_SERVER_URL, normalized.profiles[0].livyServerUrl)
+        assertEquals("Analytics", normalized.profiles[1].displayName)
+        assertEquals(normalized.defaultProfileId, normalized.activeProfileId)
+        assertEquals(500, normalized.maxHistoryItems)
+        assertEquals(1, normalized.consoleHistory.size)
+        assertEquals(0L, normalized.consoleHistory.single().createdAtMs)
+        assertEquals("unknown", normalized.consoleHistory.single().status)
+        assertEquals(1, normalized.consoleDrafts.size)
+        assertEquals("new", normalized.consoleDrafts.single().text)
+        assertEquals("sql", normalized.consoleDrafts.single().languageOrKind)
+    }
+
+    @Test
+    fun profile_helpers_cover_fallback_names_defaults_and_profile_scoped_clear() {
+        val state = LivyPluginSettings.PluginState()
+
+        assertEquals("Profile", state.nextProfileDisplayName())
+        assertEquals("Profile", state.defaultProfile().displayName)
+
+        val profileA = createProfile(displayName = "Profile", livyServerUrl = "http://livy-a")
+        val profileB = createProfile(displayName = "Profile 2", livyServerUrl = "http://livy-b")
+        state.profiles = mutableListOf(profileA, profileB)
+        state.activeProfileId = profileA.id
+        state.defaultProfileId = profileA.id
+        state.consoleHistory = mutableListOf(
+            LivyPluginSettings.ConsoleHistoryEntryState().apply { profileId = profileA.id; snippet = "a" },
+            LivyPluginSettings.ConsoleHistoryEntryState().apply { profileId = profileB.id; snippet = "b" }
+        )
+        state.consoleDrafts = mutableListOf(
+            LivyPluginSettings.ConsoleDraftState().apply { profileId = profileA.id; text = "a" },
+            LivyPluginSettings.ConsoleDraftState().apply { profileId = profileB.id; text = "b" }
+        )
+
+        state.setDefaultProfile("missing")
+        state.clearLocalHistoryAndDrafts(profileA.id)
+
+        assertEquals("Profile 3", state.nextProfileDisplayName())
+        assertEquals(profileA.id, state.defaultProfileId)
+        assertEquals(listOf(profileB.id), state.consoleHistory.map { it.profileId })
+        assertEquals(listOf(profileB.id), state.consoleDrafts.map { it.profileId })
+
+        state.clearLocalHistoryAndDrafts()
+
+        assertTrue(state.consoleHistory.isEmpty())
+        assertTrue(state.consoleDrafts.isEmpty())
+        assertFalse(state.profileLabel(profileB).contains("Default"))
     }
 }

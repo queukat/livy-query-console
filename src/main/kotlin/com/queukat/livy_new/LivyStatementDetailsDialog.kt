@@ -113,7 +113,7 @@ class LivyStatementDetailsDialog(
     private fun buildSummaryText(): String = buildString {
         appendLine("State: ${statement.state.orEmpty().ifBlank { "unknown" }}")
         appendLine("Output Status: ${statement.output?.status.orEmpty().ifBlank { "n/a" }}")
-        appendLine("Execution Count: ${statement.output?.execution_count?.toString().orEmpty().ifBlank { "n/a" }}")
+        appendLine("Execution Count: ${statement.output?.executionCount?.toString().orEmpty().ifBlank { "n/a" }}")
         appendLine("Progress: ${statement.progress?.toString().orEmpty().ifBlank { "n/a" }}")
         appendLine("Started: ${formatEpochMillis(statement.started)}")
         appendLine("Completed: ${formatEpochMillis(statement.completed)}")

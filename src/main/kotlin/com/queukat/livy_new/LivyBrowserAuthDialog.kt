@@ -18,6 +18,8 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.SwingUtilities
 
+private const val LIVY_AUTHENTICATION_TITLE = "Livy Authentication"
+
 class LivyBrowserAuthDialog(
     project: Project?,
     private val profile: LivyPluginSettings.ConnectionProfileState
@@ -85,7 +87,11 @@ class LivyBrowserAuthDialog(
 
     override fun doOKAction() {
         if (!supported) {
-            Messages.showErrorDialog(contentPanel, "Embedded browser authentication is not supported in this IDE runtime.", "Livy Authentication")
+            Messages.showErrorDialog(
+                contentPanel,
+                "Embedded browser authentication is not supported in this IDE runtime.",
+                LIVY_AUTHENTICATION_TITLE
+            )
             return
         }
         val cookies = browser
@@ -96,7 +102,7 @@ class LivyBrowserAuthDialog(
             Messages.showErrorDialog(
                 contentPanel,
                 "No browser cookies were captured for $targetUrl yet. Finish the login flow first.",
-                "Livy Authentication"
+                LIVY_AUTHENTICATION_TITLE
             )
             return
         }
@@ -137,13 +143,13 @@ class LivyBrowserAuthDialog(
                 }
             },
             currentBrowser.getCefBrowser()
-                )
+        )
     }
 
     private fun JBCefCookieManager.readCookiesForTarget(): List<JBCefCookie> {
         val future = getCookies(targetUrl, true)
         return try {
-            future.get(COOKIE_ACCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            future[COOKIE_ACCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS]
                 .filter { cookieMatchesTarget(it) }
         } catch (_: TimeoutException) {
             future.cancel(true)

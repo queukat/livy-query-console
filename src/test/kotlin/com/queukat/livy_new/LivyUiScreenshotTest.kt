@@ -96,7 +96,7 @@ class LivyUiScreenshotTest {
                 state = "available",
                 output = StatementOutput(
                     status = "ok",
-                    execution_count = 1,
+                    executionCount = 1,
                     data = mapOf(
                         "text/plain" to """
                             +---+-----+

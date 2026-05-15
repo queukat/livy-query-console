@@ -3,7 +3,6 @@ package com.queukat.livy_new
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 
 data class LivySourceRequest(
@@ -24,8 +23,8 @@ fun resolveWholeFileRequest(e: AnActionEvent): LivySourceRequest? {
         return resolveWholeFileRequest(editor.document.text, file)
     }
 
-    val project = e.project ?: return null
-    val selectedFile = selectedVirtualFile(e, project) ?: return null
+    if (e.project == null) return null
+    val selectedFile = selectedVirtualFile(e) ?: return null
     return resolveWholeFileRequest(readVirtualFileText(selectedFile), selectedFile)
 }
 
@@ -64,7 +63,7 @@ fun resolveWholeFileRequest(documentText: String, file: VirtualFile): LivySource
     )
 }
 
-private fun selectedVirtualFile(e: AnActionEvent, project: Project): VirtualFile? {
+private fun selectedVirtualFile(e: AnActionEvent): VirtualFile? {
     val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
     return when {
         !files.isNullOrEmpty() -> files.firstOrNull { !it.isDirectory }

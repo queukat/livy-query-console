@@ -9,6 +9,8 @@ import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
+private val JSON_MEDIA_TYPE = "application/json".toMediaType()
+
 /**
  * Livy REST client. Uses shared OkHttpClient & Gson (see LivyClientProvider).
  */
@@ -68,7 +70,7 @@ class LivyClient(
 
         val request = Request.Builder()
             .url(url)
-            .post(json.toRequestBody("application/json".toMediaType()))
+            .post(json.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -110,7 +112,7 @@ class LivyClient(
 
         val request = Request.Builder()
             .url(url)
-            .post(json.toRequestBody("application/json".toMediaType()))
+            .post(json.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -192,7 +194,7 @@ class LivyClient(
 
         val request = Request.Builder()
             .url(url)
-            .post(json.toRequestBody("application/json".toMediaType()))
+            .post(json.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -282,14 +284,27 @@ data class ConnectionTestDiagnostics(
         appendLine("Request URL: $requestUrl")
         appendLine("Elapsed: ${elapsedMs} ms")
         appendLine("Result: ${if (success) "SUCCESS" else "FAILURE"}")
+        appendAuthHint()
+        appendHttpDetails()
+        appendResponseHeaders()
+        appendResponseBody()
+        appendExceptionDetails()
+        appendCauseChain()
+    }
+
+    private fun StringBuilder.appendAuthHint() {
         if (authRequired) {
             appendLine("Auth hint: Browser authentication appears to be required.")
         }
+    }
 
+    private fun StringBuilder.appendHttpDetails() {
         if (httpCode != null) {
             appendLine("HTTP: $httpCode ${httpMessage.orEmpty().trim()}")
         }
+    }
 
+    private fun StringBuilder.appendResponseHeaders() {
         if (responseHeaders.isNotEmpty()) {
             appendLine()
             appendLine("Response Headers:")
@@ -297,19 +312,25 @@ data class ConnectionTestDiagnostics(
                 appendLine("$key: ${values.joinToString(", ")}")
             }
         }
+    }
 
+    private fun StringBuilder.appendResponseBody() {
         if (!responseBodyPreview.isNullOrBlank()) {
             appendLine()
             appendLine("Response Body (preview):")
             appendLine(responseBodyPreview)
         }
+    }
 
+    private fun StringBuilder.appendExceptionDetails() {
         if (!exceptionClass.isNullOrBlank()) {
             appendLine()
             appendLine("Exception: $exceptionClass")
             if (!exceptionMessage.isNullOrBlank()) appendLine("Message: $exceptionMessage")
         }
+    }
 
+    private fun StringBuilder.appendCauseChain() {
         if (causeChain.isNotEmpty()) {
             appendLine()
             appendLine("Cause Chain:")

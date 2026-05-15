@@ -19,6 +19,8 @@ import javax.swing.JSpinner
 import javax.swing.JTextField
 import javax.swing.SpinnerNumberModel
 
+private const val LIVY_ERROR_TITLE = "Livy Error"
+
 class LivyPluginConfigurable : Configurable {
 
     private var mainPanel: DialogPanel? = null
@@ -473,43 +475,43 @@ class LivyPluginConfigurable : Configurable {
 
     private fun testSelectedProfile(verbose: Boolean) {
         val profile = buildCurrentProfileFromUi()
-        val url = LivyManagedSessions.normalizeServerUrl(profile.livyServerUrl)
         LivyBackground.run(
             project = null,
             title = if (verbose) "Testing Livy connection (verbose)" else "Testing Livy connection",
             action = { _ -> LivyClientProvider.getInstance().get(profile).testConnectionDetailed() },
             onSuccessUi = { diagnostics ->
                 updateAuthStatus()
-                if (verbose) {
-                    ResultDialog(diagnostics.toDiagnosticsText()).show()
-                } else if (diagnostics.success) {
-                    Messages.showInfoMessage(diagnostics.summary(), "Livy")
-                } else if (diagnostics.authRequired) {
-                    val handled = maybePromptForBrowserAuthentication(
-                        failure = LivyAuthenticationRequiredException(
-                            httpCode = diagnostics.httpCode ?: 0,
-                            httpMessage = diagnostics.httpMessage.orEmpty(),
-                            responseHeaders = diagnostics.responseHeaders,
-                            responseBodyPreview = diagnostics.responseBodyPreview.orEmpty()
-                        ),
-                        profile = profile,
-                        parentComponent = mainPanel
-                    ) {
-                        testSelectedProfile(verbose = verbose)
+                when {
+                    verbose -> ResultDialog(diagnostics.toDiagnosticsText()).show()
+                    diagnostics.success -> Messages.showInfoMessage(diagnostics.summary(), "Livy")
+                    diagnostics.authRequired -> {
+                        val handled = maybePromptForBrowserAuthentication(
+                            failure = LivyAuthenticationRequiredException(
+                                httpCode = diagnostics.httpCode ?: 0,
+                                httpMessage = diagnostics.httpMessage.orEmpty(),
+                                responseHeaders = diagnostics.responseHeaders,
+                                responseBodyPreview = diagnostics.responseBodyPreview.orEmpty()
+                            ),
+                            profile = profile,
+                            parentComponent = mainPanel
+                        ) {
+                            testSelectedProfile(verbose = verbose)
+                        }
+                        if (!handled) {
+                            Messages.showErrorDialog(
+                                mainPanel,
+                                diagnostics.summary(),
+                                LIVY_ERROR_TITLE
+                            )
+                        }
                     }
-                    if (!handled) {
+                    else -> {
                         Messages.showErrorDialog(
                             mainPanel,
-                            diagnostics.summary(),
-                            "Livy Error"
+                            diagnostics.summary() + "\nIf this endpoint is behind SSO, use \"Authenticate via Browser…\" first.",
+                            LIVY_ERROR_TITLE
                         )
                     }
-                } else {
-                    Messages.showErrorDialog(
-                        mainPanel,
-                        diagnostics.summary() + "\nIf this endpoint is behind SSO, use \"Authenticate via Browser…\" first.",
-                        "Livy Error"
-                    )
                 }
             },
             onErrorUi = { ex ->
@@ -530,7 +532,7 @@ class LivyPluginConfigurable : Configurable {
                 } else {
                     "Connection test failed: ${ex.message}"
                 }
-                Messages.showErrorDialog(mainPanel, text, "Livy Error")
+                Messages.showErrorDialog(mainPanel, text, LIVY_ERROR_TITLE)
             }
         )
     }
@@ -574,7 +576,7 @@ class LivyPluginConfigurable : Configurable {
                     updateAuthStatus()
                     return@run
                 }
-                Messages.showErrorDialog("Failed to create session: ${ex.message}", "Livy Error")
+                Messages.showErrorDialog("Failed to create session: ${ex.message}", LIVY_ERROR_TITLE)
             }
         )
     }

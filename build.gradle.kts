@@ -1,16 +1,20 @@
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
     id("java")
+    id("jacoco")
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.intellij)
+    alias(libs.plugins.sonarqube)
 
     alias(libs.plugins.version.catalog.update)
 }
 
 val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
-val basePluginVersion = "1.5.4"
+val basePluginVersion = "1.5.5"
 val pluginVersionSuffix = providers.gradleProperty("pluginVersionSuffix").orNull?.trim().orEmpty()
 val marketplacePublishingToken = providers.gradleProperty("intellijPlatformPublishingToken")
     .orElse(providers.environmentVariable("ORG_GRADLE_PROJECT_intellijPlatformPublishingToken"))
@@ -27,6 +31,42 @@ version = if (pluginVersionSuffix.isBlank()) {
 
 repositories {
     mavenCentral()
+}
+
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+sonar {
+    properties {
+        property("sonar.projectKey", "com.queukat:livy_new")
+        property("sonar.projectName", "livy_new")
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml").get().asFile.absolutePath
+        )
+        property(
+            "sonar.coverage.exclusions",
+            listOf(
+                "src/main/kotlin/com/queukat/livy_new/bottompanel/**",
+                "src/main/kotlin/com/queukat/livy_new/editor/**",
+                "src/main/kotlin/com/queukat/livy_new/*Action.kt",
+                "src/main/kotlin/com/queukat/livy_new/*Dialog.kt",
+                "src/main/kotlin/com/queukat/livy_new/*Factory.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyAuthSessionStore.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyAuthUi.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyBackground.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyBrowserAuthDialog.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyClientProvider.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyConsoleLauncher.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyPluginConfigurable.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyProfileSelection.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivySourceContext.kt",
+                "src/main/kotlin/com/queukat/livy_new/LivyStatementDetailsDialog.kt",
+                "src/main/kotlin/com/queukat/livy_new/ShowStatementsDialog.kt"
+            ).joinToString(",")
+        )
+    }
 }
 
 // Configure Gradle IntelliJ Plugin
@@ -58,6 +98,21 @@ tasks {
     named<Test>("test") {
         useJUnitPlatform {
             excludeTags("screenshots")
+        }
+        extensions.configure<JacocoTaskExtension> {
+            isIncludeNoLocationClasses = true
+            excludes = listOf("jdk.internal.*")
+        }
+        finalizedBy(named("jacocoTestReport"))
+    }
+
+    named<JacocoReport>("jacocoTestReport") {
+        dependsOn(named("test"))
+        classDirectories.setFrom(layout.buildDirectory.dir("instrumented/instrumentCode"))
+        sourceDirectories.setFrom(files("src/main/kotlin", "src/main/java"))
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
         }
     }
 

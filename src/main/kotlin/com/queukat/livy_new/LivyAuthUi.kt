@@ -5,6 +5,9 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.ui.jcef.JBCefApp
 import java.awt.Component
 
+private const val LIVY_AUTHENTICATION_TITLE = "Livy Authentication"
+private const val LIVY_AUTHENTICATION_REQUIRED_TITLE = "Livy Authentication Required"
+
 fun authenticateProfileInBrowser(
     profile: LivyPluginSettings.ConnectionProfileState,
     project: Project? = null,
@@ -17,13 +20,13 @@ fun authenticateProfileInBrowser(
             Messages.showErrorDialog(
                 parentComponent,
                 "This IDE runtime does not support the embedded browser needed for Livy sign-in.",
-                "Livy Authentication"
+                LIVY_AUTHENTICATION_TITLE
             )
         } else {
             Messages.showErrorDialog(
                 project,
                 "This IDE runtime does not support the embedded browser needed for Livy sign-in.",
-                "Livy Authentication"
+                LIVY_AUTHENTICATION_TITLE
             )
         }
         return null
@@ -40,9 +43,9 @@ fun authenticateProfileInBrowser(
     if (showSuccessMessage) {
         val message = "Browser session saved for ${profile.displayName.ifBlank { targetUrl }}.\n${status.toDisplayText(targetUrl)}"
         if (parentComponent != null) {
-            Messages.showInfoMessage(parentComponent, message, "Livy Authentication")
+            Messages.showInfoMessage(parentComponent, message, LIVY_AUTHENTICATION_TITLE)
         } else {
-            Messages.showInfoMessage(project, message, "Livy Authentication")
+            Messages.showInfoMessage(project, message, LIVY_AUTHENTICATION_TITLE)
         }
     }
     return status
@@ -66,9 +69,9 @@ fun maybePromptForBrowserAuthentication(
     }
 
     val answer = if (parentComponent != null) {
-        Messages.showYesNoDialog(parentComponent, message, "Livy Authentication Required", null)
+        Messages.showYesNoDialog(parentComponent, message, LIVY_AUTHENTICATION_REQUIRED_TITLE, null)
     } else {
-        Messages.showYesNoDialog(project, message, "Livy Authentication Required", null)
+        Messages.showYesNoDialog(project, message, LIVY_AUTHENTICATION_REQUIRED_TITLE, null)
     }
     if (answer != Messages.YES) return true
 
@@ -81,9 +84,9 @@ fun maybePromptForBrowserAuthentication(
 
     val successMessage = "Browser session saved.\n${status.toDisplayText(targetUrl)}"
     if (parentComponent != null) {
-        Messages.showInfoMessage(parentComponent, successMessage, "Livy Authentication")
+        Messages.showInfoMessage(parentComponent, successMessage, LIVY_AUTHENTICATION_TITLE)
     } else {
-        Messages.showInfoMessage(project, successMessage, "Livy Authentication")
+        Messages.showInfoMessage(project, successMessage, LIVY_AUTHENTICATION_TITLE)
     }
     onAuthenticated?.invoke()
     return true

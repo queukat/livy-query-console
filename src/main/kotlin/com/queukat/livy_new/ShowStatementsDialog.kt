@@ -16,6 +16,9 @@ import javax.swing.JScrollPane
 import javax.swing.ListSelectionModel
 import javax.swing.table.DefaultTableModel
 
+private const val LIVY_STATEMENTS_TITLE = "Livy Statements"
+private const val LIVY_ERROR_TITLE = "Livy Error"
+
 class ShowStatementsDialog(
     private val client: LivyClient,
     private val sessionId: Int,
@@ -78,7 +81,7 @@ class ShowStatementsDialog(
                 }
                 val code = statement.code.orEmpty()
                 if (code.isBlank()) {
-                    Messages.showInfoMessage(project, "The selected statement has no code payload.", "Livy Statements")
+                    Messages.showInfoMessage(project, "The selected statement has no code payload.", LIVY_STATEMENTS_TITLE)
                     return
                 }
                 CopyPasteManager.getInstance().setContents(StringSelection(code))
@@ -87,7 +90,11 @@ class ShowStatementsDialog(
         object : DialogWrapperAction("Open in Work File") {
             override fun doAction(e: java.awt.event.ActionEvent?) {
                 val target = executionTarget ?: run {
-                    Messages.showInfoMessage(project, "This statements view is not bound to a Livy work-file profile context.", "Livy Statements")
+                    Messages.showInfoMessage(
+                        project,
+                        "This statements view is not bound to a Livy work-file profile context.",
+                        LIVY_STATEMENTS_TITLE
+                    )
                     return
                 }
                 val statement = selectedStatement() ?: run {
@@ -96,7 +103,7 @@ class ShowStatementsDialog(
                 }
                 val code = statement.code.orEmpty()
                 if (code.isBlank()) {
-                    Messages.showInfoMessage(project, "The selected statement has no code payload.", "Livy Statements")
+                    Messages.showInfoMessage(project, "The selected statement has no code payload.", LIVY_STATEMENTS_TITLE)
                     return
                 }
                 openLivyConsole(project, target, code)
@@ -141,7 +148,7 @@ class ShowStatementsDialog(
                 Messages.showErrorDialog(
                     project,
                     "Failed to load statements: ${e.message}",
-                    "Livy Error"
+                    LIVY_ERROR_TITLE
                 )
             }
         )
@@ -153,7 +160,7 @@ class ShowStatementsDialog(
             return
         }
         val statementId = selected.id ?: run {
-            Messages.showInfoMessage(project, "The selected statement has no id.", "Livy Statements")
+            Messages.showInfoMessage(project, "The selected statement has no id.", LIVY_STATEMENTS_TITLE)
             return
         }
         LivyBackground.run(
@@ -182,7 +189,7 @@ class ShowStatementsDialog(
                 ) {
                     return@run
                 }
-                Messages.showErrorDialog(project, "Failed to load statement details: ${error.message}", "Livy Error")
+                Messages.showErrorDialog(project, "Failed to load statement details: ${error.message}", LIVY_ERROR_TITLE)
             }
         )
     }
@@ -195,7 +202,7 @@ class ShowStatementsDialog(
     }
 
     private fun showNoSelectionMessage() {
-        Messages.showInfoMessage(project, "Select a statement first.", "Livy Statements")
+        Messages.showInfoMessage(project, "Select a statement first.", LIVY_STATEMENTS_TITLE)
     }
 
     private fun shorten(code: String, maxLen: Int = 60): String =

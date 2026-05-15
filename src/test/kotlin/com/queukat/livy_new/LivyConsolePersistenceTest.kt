@@ -40,4 +40,17 @@ class LivyConsolePersistenceTest {
         assertEquals(1, state.consoleDrafts.size)
         assertEquals("select 2", state.draftTextForProfile("profile-a", "sql"))
     }
+
+    @Test
+    fun history_status_prefers_output_status_then_statement_state_then_unknown() {
+        assertEquals(
+            "ok",
+            historyStatusFor(Statement(state = "available", output = StatementOutput(status = " ok ")))
+        )
+        assertEquals(
+            "available",
+            historyStatusFor(Statement(state = " available ", output = StatementOutput(status = " ")))
+        )
+        assertEquals("unknown", historyStatusFor(Statement()))
+    }
 }

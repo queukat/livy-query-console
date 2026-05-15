@@ -502,7 +502,7 @@ class LivyConsolePanel(
 
         return buildString {
             appendLine("status: ${out.status}")
-            appendLine("execution_count: ${out.execution_count}")
+            appendLine("execution_count: ${out.executionCount}")
             if (out.status == "error") {
                 appendLine()
                 appendLine("ename: ${out.ename}")
@@ -557,7 +557,7 @@ class LivyConsolePanel(
     fun applyWorkSurfaceRequest(request: LivyWorkSurfaceRequest) {
         request.origin?.let { LivySourceOrigins.attach(file, it) }
         when (request.contentMode) {
-            LivyWorkSurfaceContentMode.NONE -> {}
+            LivyWorkSurfaceContentMode.NONE -> Unit
             LivyWorkSurfaceContentMode.REPLACE -> replaceEditorText(request.snippet)
             LivyWorkSurfaceContentMode.INSERT -> appendSnippetBlock(request.snippet)
         }
@@ -651,9 +651,22 @@ class LivyConsolePanel(
     private fun currentSourceOrigin(): LivySourceOrigin? = LivySourceOrigins.resolve(file)
 
     private fun parseAsciiTableOrNull(asciiTable: String): JTable? {
+        val parsed = parseAsciiTable(asciiTable) ?: return null
+        val model = object : DefaultTableModel() {
+            override fun isCellEditable(row: Int, column: Int) = false
+        }
+        model.setColumnIdentifiers(parsed.headerCells.toTypedArray())
+        for (row in parsed.dataRows) {
+            model.addRow(normalizeAsciiRow(row, parsed.headerCells.size).toTypedArray())
+        }
+
+        return JTable(model).apply { font = Font("Monospaced", Font.PLAIN, 12) }
+    }
+
+    private fun parseAsciiTable(asciiTable: String): ParsedAsciiTable? {
         val lines = asciiTable.lines().map { it.trimEnd() }
-        val borderIndices = lines.mapIndexedNotNull { i, line ->
-            if (line.startsWith("+") && line.endsWith("+")) i else null
+        val borderIndices = lines.mapIndexedNotNull { index, line ->
+            if (isAsciiBorder(line)) index else null
         }
         if (borderIndices.size < 2) return null
 
@@ -663,30 +676,25 @@ class LivyConsolePanel(
         if (headerCells.isEmpty()) return null
 
         val dataRows = mutableListOf<List<String>>()
-        val dataStartIndex = borderIndices[1] + 1
-        var i = dataStartIndex
-        while (i < lines.size) {
-            val line = lines[i]
-            if (line.startsWith("+") && line.endsWith("+")) break
-            if (line.startsWith("|")) dataRows.add(parseLineAsCells(line))
-            i++
-        }
-
-        val model = object : DefaultTableModel() {
-            override fun isCellEditable(row: Int, column: Int) = false
-        }
-        model.setColumnIdentifiers(headerCells.toTypedArray())
-        for (row in dataRows) {
-            val rowCells = if (row.size >= headerCells.size) {
-                row.take(headerCells.size)
-            } else {
-                row + List(headerCells.size - row.size) { "" }
+        var index = borderIndices[1] + 1
+        while (index < lines.size && !isAsciiBorder(lines[index])) {
+            if (lines[index].startsWith("|")) {
+                dataRows.add(parseLineAsCells(lines[index]))
             }
-            model.addRow(rowCells.toTypedArray())
+            index++
+        }
+        return ParsedAsciiTable(headerCells, dataRows)
+    }
+
+    private fun normalizeAsciiRow(row: List<String>, width: Int): List<String> =
+        if (row.size >= width) {
+            row.take(width)
+        } else {
+            row + List(width - row.size) { "" }
         }
 
-        return JTable(model).apply { font = Font("Monospaced", Font.PLAIN, 12) }
-    }
+    private fun isAsciiBorder(line: String): Boolean =
+        line.startsWith("+") && line.endsWith("+")
 
     private fun parseLineAsCells(line: String): List<String> {
         val rawParts = line.trim().split('|')
@@ -744,6 +752,11 @@ class LivyConsolePanel(
         val sessionId: Int,
         val statement: Statement,
         val sourceOrigin: LivySourceOrigin?
+    )
+
+    private data class ParsedAsciiTable(
+        val headerCells: List<String>,
+        val dataRows: List<List<String>>
     )
 
     companion object {

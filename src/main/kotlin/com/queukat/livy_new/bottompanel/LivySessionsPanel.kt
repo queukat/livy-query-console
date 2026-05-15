@@ -1,7 +1,10 @@
 package com.queukat.livy_new.bottompanel
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
@@ -15,25 +18,41 @@ import com.queukat.livy_new.LivyPluginSettings
 import com.queukat.livy_new.Session
 import com.queukat.livy_new.SessionLogsDialog
 import com.queukat.livy_new.ShowStatementsDialog
+import com.queukat.livy_new.createProfile
+import com.queukat.livy_new.findProfile
 import com.queukat.livy_new.maybePromptForBrowserAuthentication
+import com.queukat.livy_new.nextProfileDisplayName
 import com.queukat.livy_new.normalizeSessionsAutoRefreshIntervalSeconds
 import com.queukat.livy_new.profileChoices
 import com.queukat.livy_new.profileLabel
 import com.queukat.livy_new.setActiveProfile
+import com.queukat.livy_new.syncLegacyFieldsFromActiveProfile
 import java.awt.BorderLayout
 import javax.swing.JCheckBox
 import javax.swing.DefaultComboBoxModel
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JComboBox
+import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.JSpinner
+import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SpinnerNumberModel
 import javax.swing.Timer
+import javax.swing.event.PopupMenuEvent
+import javax.swing.event.PopupMenuListener
 import javax.swing.table.DefaultTableModel
+
+private const val LIVY_ERROR_TITLE = "Livy Error"
+private const val NO_SESSION_SELECTED_TITLE = "No Session Selected"
+private const val NO_SESSION_SELECTED_MESSAGE = "Please select a session in the table first."
+private const val INVALID_SESSION_TITLE = "Invalid Session"
+private const val INVALID_SESSION_MESSAGE = "Selected session has no id."
+private const val NO_SERVER_CONTEXT_TITLE = "No Server Context"
+private const val NO_SERVER_CONTEXT_MESSAGE = "Refresh sessions first to bind the table to a Livy server."
 
 class LivySessionsPanel(
     private val project: Project,
@@ -71,6 +90,9 @@ class LivySessionsPanel(
     private val rowSessions: MutableList<Session> = mutableListOf()
 
     private val refreshButton = JButton("Refresh Sessions")
+    private val addProfileButton = JButton("Add Profile…")
+    private val refreshProfilesButton = JButton("Refresh Profiles")
+    private val profileSettingsButton = JButton("Profile Settings…")
     private val chooseColumnsButton = JButton("Columns…")
     private val showStatementsButton = JButton("Show Statements")
     private val viewLogsButton = JButton("View Logs")
@@ -119,6 +141,14 @@ class LivySessionsPanel(
                 }
             }
         }
+        profileCombo.addPopupMenuListener(object : PopupMenuListener {
+            override fun popupMenuWillBecomeVisible(e: PopupMenuEvent) {
+                refreshProfiles()
+            }
+
+            override fun popupMenuWillBecomeInvisible(e: PopupMenuEvent) = Unit
+            override fun popupMenuCanceled(e: PopupMenuEvent) = Unit
+        })
         reloadProfileChoices()
         configureAutoRefreshControls()
 
@@ -126,6 +156,9 @@ class LivySessionsPanel(
             add(JPanel().apply {
                 add(JLabel("Profile:"))
                 add(profileCombo)
+                add(addProfileButton)
+                add(refreshProfilesButton)
+                add(profileSettingsButton)
                 add(autoRefreshCheckBox)
                 add(JLabel("Every"))
                 add(autoRefreshSpinner)
@@ -148,6 +181,9 @@ class LivySessionsPanel(
 
         tabbedPane.addTab("Sessions", sessionsPanel)
 
+        addProfileButton.addActionListener { addProfileFromPanel() }
+        refreshProfilesButton.addActionListener { refreshProfiles() }
+        profileSettingsButton.addActionListener { openProfileSettings() }
         refreshButton.addActionListener { refreshSessions() }
         chooseColumnsButton.addActionListener { chooseColumns() }
         showStatementsButton.addActionListener { showStatementsForSelectedSession() }
@@ -191,6 +227,8 @@ class LivySessionsPanel(
 
     override fun addNotify() {
         super.addNotify()
+        refreshProfiles()
+        configureAutoRefreshControls()
         updateAutoRefreshTimer()
     }
 
@@ -203,13 +241,19 @@ class LivySessionsPanel(
         refreshSessions(showModalErrors = true)
     }
 
+    fun refreshProfiles() {
+        reloadProfileChoices(selectedProfileId)
+        updateContextLabel(rowSessions.size)
+        updateActionButtons()
+    }
+
     private fun refreshSessions(showModalErrors: Boolean) {
         if (refreshInProgress) return
         reloadProfileChoices(selectedProfileId)
         val selectedProfile = selectedProfile() ?: run {
             contextLabel.text = "No connection profile is available."
             if (showModalErrors) {
-                Messages.showErrorDialog(project, "No Livy connection profile is configured.", "Livy Error")
+                Messages.showErrorDialog(project, "No Livy connection profile is configured.", LIVY_ERROR_TITLE)
             }
             return
         }
@@ -246,7 +290,7 @@ class LivySessionsPanel(
                     Messages.showErrorDialog(
                         project,
                         "Failed to refresh sessions: ${e.message}",
-                        "Livy Error"
+                        LIVY_ERROR_TITLE
                     )
                 }
             }
@@ -290,6 +334,34 @@ class LivySessionsPanel(
         updateActionButtons()
     }
 
+    private fun addProfileFromPanel() {
+        val state = LivyPluginSettings.getInstance().pluginState
+        val dialog = AddLivyProfileDialog(state.nextProfileDisplayName())
+        if (!dialog.showAndGet()) return
+
+        val profile = createProfile(
+            displayName = dialog.displayName,
+            livyServerUrl = dialog.serverUrl
+        ).apply {
+            kind = dialog.sessionKind
+        }
+        state.profiles.add(profile)
+        state.activeProfileId = profile.id
+        if (state.defaultProfileId.isBlank() || state.findProfile(state.defaultProfileId) == null) {
+            state.defaultProfileId = profile.id
+        }
+        state.syncLegacyFieldsFromActiveProfile()
+
+        selectedProfileId = profile.id
+        refreshProfiles()
+        contextLabel.text = "Added profile ${profile.displayName} (${profile.livyServerUrl}). Click Refresh Sessions when ready."
+    }
+
+    private fun openProfileSettings() {
+        ShowSettingsUtil.getInstance().showSettingsDialog(project, "Livy")
+        refreshProfiles()
+    }
+
     private fun selectedSession(): Session? {
         val viewRow = sessionsTable.selectedRow
         if (viewRow < 0) return null
@@ -301,16 +373,16 @@ class LivySessionsPanel(
     private fun showStatementsForSelectedSession() {
         val session = selectedSession()
         if (session == null) {
-            Messages.showInfoMessage(project, "Please select a session in the table first.", "No Session Selected")
+            Messages.showInfoMessage(project, NO_SESSION_SELECTED_MESSAGE, NO_SESSION_SELECTED_TITLE)
             return
         }
         val sessionId = session.id
         if (sessionId == null) {
-            Messages.showInfoMessage(project, "Selected session has no id.", "Invalid Session")
+            Messages.showInfoMessage(project, INVALID_SESSION_MESSAGE, INVALID_SESSION_TITLE)
             return
         }
         val target = loadedTarget ?: run {
-            Messages.showInfoMessage(project, "Refresh sessions first to bind the table to a Livy server.", "No Server Context")
+            Messages.showInfoMessage(project, NO_SERVER_CONTEXT_MESSAGE, NO_SERVER_CONTEXT_TITLE)
             return
         }
         ShowStatementsDialog(
@@ -324,16 +396,16 @@ class LivySessionsPanel(
     private fun showLogsForSelectedSession() {
         val session = selectedSession()
         if (session == null) {
-            Messages.showInfoMessage(project, "Please select a session in the table first.", "No Session Selected")
+            Messages.showInfoMessage(project, NO_SESSION_SELECTED_MESSAGE, NO_SESSION_SELECTED_TITLE)
             return
         }
         val sessionId = session.id
         if (sessionId == null) {
-            Messages.showInfoMessage(project, "Selected session has no id.", "Invalid Session")
+            Messages.showInfoMessage(project, INVALID_SESSION_MESSAGE, INVALID_SESSION_TITLE)
             return
         }
         val target = loadedTarget ?: run {
-            Messages.showInfoMessage(project, "Refresh sessions first to bind the table to a Livy server.", "No Server Context")
+            Messages.showInfoMessage(project, NO_SERVER_CONTEXT_MESSAGE, NO_SERVER_CONTEXT_TITLE)
             return
         }
         SessionLogsDialog(
@@ -347,15 +419,15 @@ class LivySessionsPanel(
 
     private fun terminateSelectedManagedSession() {
         val session = selectedSession() ?: run {
-            Messages.showInfoMessage(project, "Please select a session in the table first.", "No Session Selected")
+            Messages.showInfoMessage(project, NO_SESSION_SELECTED_MESSAGE, NO_SESSION_SELECTED_TITLE)
             return
         }
         val sessionId = session.id ?: run {
-            Messages.showInfoMessage(project, "Selected session has no id.", "Invalid Session")
+            Messages.showInfoMessage(project, INVALID_SESSION_MESSAGE, INVALID_SESSION_TITLE)
             return
         }
         val target = loadedTarget ?: run {
-            Messages.showInfoMessage(project, "Refresh sessions first to bind the table to a Livy server.", "No Server Context")
+            Messages.showInfoMessage(project, NO_SERVER_CONTEXT_MESSAGE, NO_SERVER_CONTEXT_TITLE)
             return
         }
         val settings = LivyPluginSettings.getInstance().pluginState
@@ -401,7 +473,7 @@ class LivySessionsPanel(
                 Messages.showErrorDialog(
                     project,
                     "Failed to terminate session #$sessionId: ${error.message}",
-                    "Livy Error"
+                    LIVY_ERROR_TITLE
                 )
             }
         )
@@ -526,4 +598,49 @@ class LivySessionsPanel(
         val target: LivyExecutionTarget,
         val sessions: List<Session>
     )
+}
+
+private class AddLivyProfileDialog(
+    suggestedDisplayName: String
+) : DialogWrapper(true) {
+
+    private val displayNameField = JTextField(suggestedDisplayName, 22)
+    private val serverUrlField = JTextField(LivyPluginSettings.DEFAULT_SERVER_URL, 28)
+    private val kindField = JTextField("spark", 12)
+
+    val displayName: String
+        get() = displayNameField.text.trim().ifBlank { "Profile" }
+
+    val serverUrl: String
+        get() = LivyManagedSessions.normalizeServerUrl(serverUrlField.text.trim())
+
+    val sessionKind: String
+        get() = kindField.text.trim()
+
+    init {
+        title = "Add Livy Profile"
+        setOKButtonText("Add Profile")
+        init()
+    }
+
+    override fun createCenterPanel(): JComponent =
+        JPanel().apply {
+            layout = java.awt.GridLayout(0, 2, 8, 8)
+            add(JLabel("Display Name:"))
+            add(displayNameField)
+            add(JLabel("Server URL:"))
+            add(serverUrlField)
+            add(JLabel("Session Kind:"))
+            add(kindField)
+        }
+
+    override fun doValidate(): ValidationInfo? {
+        if (serverUrlField.text.isBlank()) {
+            return ValidationInfo("Server URL cannot be empty.", serverUrlField)
+        }
+        if (serverUrl.isBlank()) {
+            return ValidationInfo("Server URL cannot be empty.", serverUrlField)
+        }
+        return null
+    }
 }

@@ -4,6 +4,7 @@ json = "20251224"
 kotlin = "2.3.10"
 kotlinxSerializationJson = "1.10.0"
 okhttp = "4.12.0"
+sonarqube = "7.3.0.8198"
 versionCatalogUpdatePlugin = "1.0.1"
 intellijPlatform = "2023.1.5"
 
@@ -11,6 +12,7 @@ intellijPlatform = "2023.1.5"
 intellij = { id = "org.jetbrains.intellij", version.ref = "intellijGradle" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 version-catalog-update = { id = "nl.littlerobots.version-catalog-update", version.ref = "versionCatalogUpdatePlugin" }
 
 [libraries]

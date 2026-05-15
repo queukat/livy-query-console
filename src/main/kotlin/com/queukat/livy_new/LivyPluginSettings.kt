@@ -8,6 +8,29 @@ import com.intellij.openapi.components.Storage
 import com.intellij.util.xmlb.XmlSerializerUtil
 import java.util.UUID
 
+open class LivyConnectionRuntimeSettings {
+    var livyServerUrl: String = LivyPluginSettings.DEFAULT_SERVER_URL
+    var maxSessions: Int = 4
+    var sessionManagementStrategy: String = "reuse"
+    var kind: String = ""
+    var proxyUser: String = ""
+    var jars: String = ""
+    var pyFiles: String = ""
+    var files: String = ""
+    var driverMemory: String = "1g"
+    var driverCores: Int = 1
+    var executorMemory: String = "1g"
+    var executorCores: Int = 1
+    var numExecutors: Int = 2
+    var archives: String = ""
+    var queue: String = ""
+    var name: String = ""
+    var conf: String = ""
+    var heartbeatTimeoutInSecond: Int = 60
+    var ttl: String = ""
+    var killOldestIfFull: Boolean = false
+}
+
 @Service(Service.Level.APP)
 @State(name = "LivyPluginSettings", storages = [Storage("LivyPluginSettings.xml")])
 class LivyPluginSettings : PersistentStateComponent<LivyPluginSettings.PluginState> {
@@ -40,31 +63,9 @@ class LivyPluginSettings : PersistentStateComponent<LivyPluginSettings.PluginSta
         var createdAtMs: Long = 0L
     }
 
-    class ConnectionProfileState {
+    class ConnectionProfileState : LivyConnectionRuntimeSettings() {
         var id: String = ""
         var displayName: String = ""
-        var livyServerUrl: String = DEFAULT_SERVER_URL
-
-        var maxSessions: Int = 4
-        var sessionManagementStrategy: String = "reuse"
-
-        var kind: String = ""
-        var proxyUser: String = ""
-        var jars: String = ""
-        var pyFiles: String = ""
-        var files: String = ""
-        var driverMemory: String = "1g"
-        var driverCores: Int = 1
-        var executorMemory: String = "1g"
-        var executorCores: Int = 1
-        var numExecutors: Int = 2
-        var archives: String = ""
-        var queue: String = ""
-        var name: String = ""
-        var conf: String = ""
-        var heartbeatTimeoutInSecond: Int = 60
-        var ttl: String = ""
-        var killOldestIfFull: Boolean = false
     }
 
     class ConsoleHistoryEntryState {
@@ -88,34 +89,11 @@ class LivyPluginSettings : PersistentStateComponent<LivyPluginSettings.PluginSta
         var updatedAtMs: Long = 0L
     }
 
-    class PluginState {
+    class PluginState : LivyConnectionRuntimeSettings() {
         /**
          * Legacy single-profile fields kept only for migration/backward-compatibility mirrors.
          * New runtime/configuration code should resolve through [profiles].
          */
-        var livyServerUrl: String = "http://localhost:8998"
-
-        var maxSessions: Int = 4
-        var sessionManagementStrategy: String = "reuse"
-
-        var kind: String = ""
-        var proxyUser: String = ""
-        var jars: String = ""
-        var pyFiles: String = ""
-        var files: String = ""
-        var driverMemory: String = "1g"
-        var driverCores: Int = 1
-        var executorMemory: String = "1g"
-        var executorCores: Int = 1
-        var numExecutors: Int = 2
-        var archives: String = ""
-        var queue: String = ""
-        var name: String = ""
-        var conf: String = ""
-        var heartbeatTimeoutInSecond: Int = 60
-        var ttl: String = ""
-        var killOldestIfFull: Boolean = false
-
         var profiles: MutableList<ConnectionProfileState> = mutableListOf()
         var activeProfileId: String = ""
         var defaultProfileId: String = ""
@@ -158,26 +136,7 @@ class LivyPluginSettings : PersistentStateComponent<LivyPluginSettings.PluginSta
 
 fun LivyPluginSettings.PluginState.snapshot(): LivyPluginSettings.PluginState =
     LivyPluginSettings.PluginState().apply {
-        livyServerUrl = this@snapshot.livyServerUrl
-        maxSessions = this@snapshot.maxSessions
-        sessionManagementStrategy = this@snapshot.sessionManagementStrategy
-        kind = this@snapshot.kind
-        proxyUser = this@snapshot.proxyUser
-        jars = this@snapshot.jars
-        pyFiles = this@snapshot.pyFiles
-        files = this@snapshot.files
-        driverMemory = this@snapshot.driverMemory
-        driverCores = this@snapshot.driverCores
-        executorMemory = this@snapshot.executorMemory
-        executorCores = this@snapshot.executorCores
-        numExecutors = this@snapshot.numExecutors
-        archives = this@snapshot.archives
-        queue = this@snapshot.queue
-        name = this@snapshot.name
-        conf = this@snapshot.conf
-        heartbeatTimeoutInSecond = this@snapshot.heartbeatTimeoutInSecond
-        ttl = this@snapshot.ttl
-        killOldestIfFull = this@snapshot.killOldestIfFull
+        copyRuntimeSettingsFrom(this@snapshot)
         profiles = this@snapshot.profiles
             .map { it.snapshot() }
             .toMutableList()
@@ -203,26 +162,7 @@ fun LivyPluginSettings.ConnectionProfileState.snapshot(): LivyPluginSettings.Con
     LivyPluginSettings.ConnectionProfileState().also { copy ->
         copy.id = id
         copy.displayName = displayName
-        copy.livyServerUrl = livyServerUrl
-        copy.maxSessions = maxSessions
-        copy.sessionManagementStrategy = sessionManagementStrategy
-        copy.kind = kind
-        copy.proxyUser = proxyUser
-        copy.jars = jars
-        copy.pyFiles = pyFiles
-        copy.files = files
-        copy.driverMemory = driverMemory
-        copy.driverCores = driverCores
-        copy.executorMemory = executorMemory
-        copy.executorCores = executorCores
-        copy.numExecutors = numExecutors
-        copy.archives = archives
-        copy.queue = queue
-        copy.name = name
-        copy.conf = conf
-        copy.heartbeatTimeoutInSecond = heartbeatTimeoutInSecond
-        copy.ttl = ttl
-        copy.killOldestIfFull = killOldestIfFull
+        copy.copyRuntimeSettingsFrom(this)
     }
 
 private fun LivyPluginSettings.ManagedSessionState.snapshot(): LivyPluginSettings.ManagedSessionState =
@@ -511,49 +451,40 @@ private fun LivyPluginSettings.PluginState.trimHistoryToRetention() {
 
 private fun LivyPluginSettings.PluginState.legacyProfileFromSingleConfig(): LivyPluginSettings.ConnectionProfileState =
     createProfile(displayName = "Default Profile", livyServerUrl = livyServerUrl).apply {
-        maxSessions = this@legacyProfileFromSingleConfig.maxSessions
-        sessionManagementStrategy = this@legacyProfileFromSingleConfig.sessionManagementStrategy
-        kind = this@legacyProfileFromSingleConfig.kind
-        proxyUser = this@legacyProfileFromSingleConfig.proxyUser
-        jars = this@legacyProfileFromSingleConfig.jars
-        pyFiles = this@legacyProfileFromSingleConfig.pyFiles
-        files = this@legacyProfileFromSingleConfig.files
-        driverMemory = this@legacyProfileFromSingleConfig.driverMemory
-        driverCores = this@legacyProfileFromSingleConfig.driverCores
-        executorMemory = this@legacyProfileFromSingleConfig.executorMemory
-        executorCores = this@legacyProfileFromSingleConfig.executorCores
-        numExecutors = this@legacyProfileFromSingleConfig.numExecutors
-        archives = this@legacyProfileFromSingleConfig.archives
-        queue = this@legacyProfileFromSingleConfig.queue
-        name = this@legacyProfileFromSingleConfig.name
-        conf = this@legacyProfileFromSingleConfig.conf
-        heartbeatTimeoutInSecond = this@legacyProfileFromSingleConfig.heartbeatTimeoutInSecond
-        ttl = this@legacyProfileFromSingleConfig.ttl
-        killOldestIfFull = this@legacyProfileFromSingleConfig.killOldestIfFull
+        copyRuntimeSettingsFrom(this@legacyProfileFromSingleConfig, includeServerUrl = false)
     }
 
 fun LivyPluginSettings.PluginState.syncLegacyFieldsFromActiveProfile() {
     val profile = findProfile(activeProfileId) ?: findProfile(defaultProfileId) ?: profiles.firstOrNull() ?: return
-    livyServerUrl = profile.livyServerUrl
-    maxSessions = profile.maxSessions
-    sessionManagementStrategy = profile.sessionManagementStrategy
-    kind = profile.kind
-    proxyUser = profile.proxyUser
-    jars = profile.jars
-    pyFiles = profile.pyFiles
-    files = profile.files
-    driverMemory = profile.driverMemory
-    driverCores = profile.driverCores
-    executorMemory = profile.executorMemory
-    executorCores = profile.executorCores
-    numExecutors = profile.numExecutors
-    archives = profile.archives
-    queue = profile.queue
-    name = profile.name
-    conf = profile.conf
-    heartbeatTimeoutInSecond = profile.heartbeatTimeoutInSecond
-    ttl = profile.ttl
-    killOldestIfFull = profile.killOldestIfFull
+    copyRuntimeSettingsFrom(profile)
+}
+
+private fun LivyConnectionRuntimeSettings.copyRuntimeSettingsFrom(
+    source: LivyConnectionRuntimeSettings,
+    includeServerUrl: Boolean = true
+) {
+    if (includeServerUrl) {
+        livyServerUrl = source.livyServerUrl
+    }
+    maxSessions = source.maxSessions
+    sessionManagementStrategy = source.sessionManagementStrategy
+    kind = source.kind
+    proxyUser = source.proxyUser
+    jars = source.jars
+    pyFiles = source.pyFiles
+    files = source.files
+    driverMemory = source.driverMemory
+    driverCores = source.driverCores
+    executorMemory = source.executorMemory
+    executorCores = source.executorCores
+    numExecutors = source.numExecutors
+    archives = source.archives
+    queue = source.queue
+    name = source.name
+    conf = source.conf
+    heartbeatTimeoutInSecond = source.heartbeatTimeoutInSecond
+    ttl = source.ttl
+    killOldestIfFull = source.killOldestIfFull
 }
 
 private fun trimPersistedText(value: String, maxChars: Int): Pair<String, Boolean> {

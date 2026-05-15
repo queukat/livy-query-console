@@ -1,5 +1,6 @@
 package com.queukat.livy_new
 
+import com.intellij.testFramework.LightVirtualFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -78,5 +79,21 @@ class LivyExecutionTargetTest {
         assertEquals("http://livy-a", target.baseUrl)
         assertEquals("sql", target.settingsSnapshot.kind)
         assertEquals("2g", target.settingsSnapshot.driverMemory)
+    }
+
+    @Test
+    fun attached_execution_target_is_reused_for_virtual_file_resolution() {
+        val file = LightVirtualFile("work.livyconsole")
+        val target = LivyExecutionTarget(
+            profileId = "profile",
+            profileName = "Profile",
+            baseUrl = "http://livy",
+            settingsSnapshot = createProfile(displayName = "Profile", livyServerUrl = "http://livy")
+        )
+
+        LivyExecutionTargets.attach(file, target)
+
+        assertEquals(target, LivyExecutionTargets.attached(file))
+        assertEquals(target, LivyExecutionTargets.resolve(file))
     }
 }
